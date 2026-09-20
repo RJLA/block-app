@@ -2,6 +2,7 @@
 
 import queue
 import sys
+import time
 import tkinter as tk
 from datetime import datetime
 from tkinter import messagebox, ttk
@@ -10,7 +11,7 @@ from . import APP_NAME, VERSION
 from .config import load_data, save_data
 from .mascot import load_mascot, set_window_icon
 from .naming import app_blocked, normalize_app, normalize_site, site_blocked
-from .paths import CONFIG_PATH, LOG_PATH
+from .paths import CONFIG_PATH, LOG_PATH, log
 from .pin import has_pin
 from .processes import Watchdog
 from .sites import apply_site_policy, clear_site_policy, site_policy_active
@@ -20,6 +21,7 @@ from .system import (
 )
 from .ui_lists import InstalledPane, ListPane
 from .ui_pin import ChangePinDialog, LockScreen
+from .ui_toast import BlockedToast
 
 try:
     import winreg
@@ -27,6 +29,9 @@ except ImportError:
     winreg = None
 
 POLL_MS = 150
+# One toast per app at most this often. A browser or game can spawn a dozen
+# processes that all die in the same sweep; the student needs one notice.
+TOAST_COOLDOWN_SECONDS = 30
 
 ENFORCEMENT_HELP = (
     "Websites: applies Chrome and Edge enterprise policy so the listed domains "
@@ -61,6 +66,8 @@ class App(ttk.Frame):
         self.pack(fill="both", expand=True)
         self.watchdog = None
         self._messages = queue.Queue()
+        self._blocked_events = queue.Queue()
+        self._last_toast = {}
         data = load_data()
 
         # Plain-Python mirrors of the UI state. The watchdog thread reads these
@@ -223,7 +230,8 @@ class App(ttk.Frame):
         if self.watchdog or not self._blocked_apps:
             return
         self.watchdog = Watchdog(lambda: self._blocked_apps,
-                                 lambda: self._dry_run, self.say)
+                                 lambda: self._dry_run, self.say,
+                                 on_blocked=self.note_blocked)
         self.watchdog.start()
         self.watch_btn.configure(text="Stop app watchdog")
 
@@ -243,6 +251,27 @@ class App(ttk.Frame):
         """Safe to call from any thread; the UI drains the queue."""
         self._messages.put(line)
 
+    def note_blocked(self, name: str) -> None:
+        """Called from the watchdog thread; the UI thread does the popup."""
+        self._blocked_events.put(name)
+
+    def display_name(self, exe: str) -> str:
+        """Prefer the friendly product name the inventory found."""
+        for entry in self.installed._all:
+            if entry["exe"] == exe:
+                return entry["name"]
+        return exe.title()
+
+    def _show_toast(self, exe: str) -> None:
+        now = time.time()
+        if now - self._last_toast.get(exe, 0) < TOAST_COOLDOWN_SECONDS:
+            return
+        self._last_toast[exe] = now
+        try:
+            BlockedToast(self.winfo_toplevel(), self.display_name(exe))
+        except tk.TclError as exc:
+            log(f"could not show the blocked notice: {exc}")
+
     def _drain_messages(self) -> None:
         while True:
             try:
@@ -253,6 +282,11 @@ class App(ttk.Frame):
             self.logbox.insert("end", f"{datetime.now():%H:%M:%S}  {line}\n")
             self.logbox.see("end")
             self.logbox.configure(state="disabled")
+        while True:
+            try:
+                self._show_toast(self._blocked_events.get_nowait())
+            except queue.Empty:
+                break
         self.after(POLL_MS, self._drain_messages)
 
     def refresh_state(self) -> None:
@@ -327,7 +361,8 @@ class App(ttk.Frame):
                           f"run:\n\n{', '.join(self._blocked_apps)}\n\nContinue?"):
             return
         self.watchdog = Watchdog(lambda: self._blocked_apps,
-                                 lambda: self._dry_run, self.say)
+                                 lambda: self._dry_run, self.say,
+                                 on_blocked=self.note_blocked)
         self.watchdog.start()
         self.watch_btn.configure(text="Stop app watchdog")
 

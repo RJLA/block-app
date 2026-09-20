@@ -223,6 +223,39 @@ persists either way, since it lives in the registry.
 
 ---
 
+---
+
+## What the student sees
+
+**A blocked app.** It opens normally, then closes within about 5 seconds — the
+watchdog's scan interval. A notice appears in the bottom-right corner with the
+mascot:
+
+> **Steam is blocked**
+> Ask your Tito or Mommy Joy to unblock it.
+
+It dismisses itself after 7 seconds, or on click. If an app spawns many
+processes — a browser is typically a dozen — they are all closed, but only one
+notice is shown, and the same app will not raise another for 30 seconds.
+
+Where possible the notice uses the app's proper name from the Installed apps
+scan ("Google Chrome" rather than "chrome").
+
+The notice does **not** appear during a dry run, since nothing is actually
+being closed.
+
+> Termination is a forced kill of the process tree, so anything unsaved in a
+> blocked app is lost without a prompt. Keep the blocklist to things like games
+> and chat apps rather than anything document-shaped.
+
+**A blocked website.** Chrome and Edge show their own built-in block page
+(`ERR_BLOCKED_BY_ADMINISTRATOR`), saying the page was blocked by the
+administrator. That wording comes from the browser, not from Block Guard.
+Other browsers are not policy-managed and show nothing unusual — block them as
+apps instead.
+
+---
+
 ## Uninstalling
 
 **Settings → Apps → Block Guard → Uninstall**, or the Start-menu entry.

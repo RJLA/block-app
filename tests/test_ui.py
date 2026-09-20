@@ -186,6 +186,53 @@ class TestLockScreen:
         assert locked_app.lock is not None      # still locked
 
 
+class TestBlockedNotice:
+    def test_a_kill_raises_one_toast(self, app, monkeypatch):
+        shown = []
+        monkeypatch.setattr(ui_app, "BlockedToast",
+                            lambda master, name: shown.append(name))
+        app.note_blocked("steam")
+        app._drain_messages()
+        assert shown == ["Steam"]
+
+    def test_repeat_kills_are_collapsed(self, app, monkeypatch):
+        """A browser dies as a dozen processes -- that is still one notice."""
+        shown = []
+        monkeypatch.setattr(ui_app, "BlockedToast",
+                            lambda master, name: shown.append(name))
+        for _ in range(12):
+            app.note_blocked("chrome")
+        app._drain_messages()
+        assert len(shown) == 1
+
+    def test_different_apps_each_get_a_notice(self, app, monkeypatch):
+        shown = []
+        monkeypatch.setattr(ui_app, "BlockedToast",
+                            lambda master, name: shown.append(name))
+        app.note_blocked("steam")
+        app.note_blocked("discord")
+        app._drain_messages()
+        assert sorted(shown) == ["Discord", "Steam"]
+
+    def test_uses_the_friendly_name_when_known(self, app, monkeypatch):
+        drain_inventory(app)
+        shown = []
+        monkeypatch.setattr(ui_app, "BlockedToast",
+                            lambda master, name: shown.append(name))
+        app.note_blocked("chrome")
+        app._drain_messages()
+        assert shown == ["Google Chrome"]
+
+    def test_notice_appears_even_while_locked(self, locked_app, monkeypatch):
+        """The only state a student ever sees the app in."""
+        shown = []
+        monkeypatch.setattr(ui_app, "BlockedToast",
+                            lambda master, name: shown.append(name))
+        locked_app.note_blocked("steam")
+        locked_app._drain_messages()
+        assert shown == ["Steam"]
+
+
 class TestActivityLog:
     def test_messages_reach_the_log_box(self, app):
         app.say("hello from a thread")

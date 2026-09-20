@@ -78,11 +78,14 @@ class Watchdog(threading.Thread):
     they are invoked from this thread, so they must not touch Tk widgets.
     """
 
-    def __init__(self, get_blocked, get_dry_run, report):
+    def __init__(self, get_blocked, get_dry_run, report, on_blocked=None):
         super().__init__(daemon=True)
         self.get_blocked = get_blocked
         self.get_dry_run = get_dry_run
         self.report = report
+        # Called with the app name after a real termination, so the UI can
+        # tell the user what happened. Never called during a dry run.
+        self.on_blocked = on_blocked
         self._stop = threading.Event()
 
     def stop(self) -> None:
@@ -102,6 +105,8 @@ class Watchdog(threading.Thread):
                         ok = kill(pid)
                         msg = (f"terminated {name} (pid {pid})" if ok
                                else f"FAILED to terminate {name} (pid {pid})")
+                        if ok and self.on_blocked:
+                            self.on_blocked(name)
                     log(msg)
                     self.report(msg)
             self._stop.wait(POLL_SECONDS)
