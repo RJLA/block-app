@@ -4,20 +4,24 @@ import tkinter as tk
 
 from .paths import log, resource_path
 
-# Tk discards images that nothing on the Python side still references.
+# Tk discards images that nothing on the Python side still references. Callers
+# normally hold their own reference; this backs up the ones that cannot.
 _KEEP_ALIVE = []
 
 
-def load_mascot(size: int):
-    """Return a PhotoImage at the requested size, or None if unavailable."""
+def load_mascot(master, size: int):
+    """Return a PhotoImage at the requested size, or None if unavailable.
+
+    `master` is required on purpose. Without it Tk binds the image to the
+    default root, which breaks as soon as more than one root has existed --
+    the second one raises TclError on a perfectly valid asset.
+    """
     path = resource_path("assets", f"mascot_{size}.png")
     try:
-        image = tk.PhotoImage(file=path)
+        return tk.PhotoImage(master=master, file=path)
     except (tk.TclError, OSError):
         log(f"mascot {size}px unavailable at {path}")
         return None
-    _KEEP_ALIVE.append(image)
-    return image
 
 
 def set_window_icon(root: tk.Tk) -> None:
@@ -27,6 +31,7 @@ def set_window_icon(root: tk.Tk) -> None:
         return
     except tk.TclError:
         pass
-    icon = load_mascot(96)
+    icon = load_mascot(root, 96)
     if icon:
         root.iconphoto(True, icon)
+        _KEEP_ALIVE.append(icon)

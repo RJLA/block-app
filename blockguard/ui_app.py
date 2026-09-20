@@ -11,10 +11,15 @@ from .config import load_data, save_data
 from .mascot import load_mascot, set_window_icon
 from .naming import app_blocked, normalize_app, normalize_site, site_blocked
 from .paths import CONFIG_PATH, LOG_PATH
+from .pin import has_pin
 from .processes import Watchdog
 from .sites import apply_site_policy, clear_site_policy, site_policy_active
-from .system import install_logon_task, is_admin, relaunch_as_admin, remove_logon_task
+from .system import (
+    install_logon_task, is_admin, relaunch_as_admin, remove_logon_task,
+    restrict_data_dir,
+)
 from .ui_lists import InstalledPane, ListPane
+from .ui_pin import ChangePinDialog, LockScreen
 
 try:
     import winreg
@@ -39,7 +44,7 @@ class Header(ttk.Frame):
 
     def __init__(self, master):
         super().__init__(master, padding=(10, 8))
-        self.mascot = load_mascot(96)
+        self.mascot = load_mascot(self, 96)
         if self.mascot:
             tk.Label(self, image=self.mascot).pack(side="left", padx=(0, 12))
         text = ttk.Frame(self)
@@ -65,7 +70,12 @@ class App(ttk.Frame):
 
         Header(self).pack(fill="x", pady=(0, 6))
 
-        nb = ttk.Notebook(self)
+        # Everything below the header lives in `body`, which stays hidden
+        # behind the lock screen until the PIN is entered.
+        self.body = ttk.Frame(self)
+        self.was_enrolling = not has_pin()
+
+        nb = ttk.Notebook(self.body)
         nb.pack(fill="both", expand=True)
         tab_lists = ttk.Frame(nb, padding=8)
         tab_installed = ttk.Frame(nb)
@@ -83,16 +93,25 @@ class App(ttk.Frame):
         self._build_log(tab_log)
 
         self.admin = is_admin()
-        ttk.Label(self, foreground="grey", text=(
+        status = ttk.Frame(self.body)
+        status.pack(fill="x", pady=(6, 0))
+        ttk.Label(status, foreground="grey", text=(
             f"v{VERSION}   |   {CONFIG_PATH}   |   "
             f"{'administrator' if self.admin else 'NOT elevated — enforcement disabled'}"
-        )).pack(fill="x", pady=(6, 0))
+        )).pack(side="left")
+        ttk.Button(status, text="Lock", width=6,
+                   command=self.lock_now).pack(side="right")
 
         self.refresh_state()
         self.after(POLL_MS, self._drain_messages)
 
+        # Enforcement starts before the PIN is entered, so a student cannot
+        # dodge the blocks simply by dismissing the lock screen at logon.
         if "--enforce" in sys.argv and self.admin:
-            self.toggle_watchdog()
+            self.start_enforcement()
+
+        self.lock = None
+        self.show_lock()
 
     # -- construction -------------------------------------------------------
     def _build_lists(self, parent, data) -> None:
@@ -118,15 +137,16 @@ class App(ttk.Frame):
         self.kind.pack(side="left", padx=6)
         ttk.Button(check, text="Check", command=self.check).pack(side="left")
 
-        self.mascot_small = load_mascot(48)
+        self.mascot_small = load_mascot(self, 48)
         self.result = tk.Label(parent, text="", font=("TkDefaultFont", 11, "bold"),
                                pady=6, padx=8, compound="left")
         self.result.pack(fill="x")
 
     def _build_installed(self, parent) -> None:
+        # The scan is deferred until unlock -- no point scanning the PC for a
+        # list nobody can see yet.
         self.installed = InstalledPane(parent, self.block_from_inventory)
         self.installed.pack(fill="both", expand=True)
-        self.installed.refresh()
 
     def _build_enforcement(self, parent) -> None:
         ttk.Label(parent, wraplength=600, justify="left",
@@ -156,10 +176,56 @@ class App(ttk.Frame):
         ttk.Button(trow, text="Stop running at logon",
                    command=self.del_task).pack(side="left", padx=6)
 
+        prow = ttk.Frame(parent)
+        prow.pack(fill="x", pady=(12, 3))
+        ttk.Button(prow, text="Change PIN", command=self.change_pin).pack(side="left")
+        ttk.Label(prow, foreground="grey",
+                  text="Required to open Block Guard.").pack(side="left", padx=10)
+
     def _build_log(self, parent) -> None:
         self.logbox = tk.Text(parent, height=16, wrap="word", state="disabled")
         self.logbox.pack(fill="both", expand=True)
         ttk.Label(parent, text=LOG_PATH, foreground="grey").pack(fill="x", pady=(4, 0))
+
+    # -- locking ------------------------------------------------------------
+    def show_lock(self) -> None:
+        """Hide everything behind the lock screen. Enforcement keeps running."""
+        if self.lock:
+            return
+        self.body.pack_forget()
+        self.lock = LockScreen(self, self.on_unlocked)
+        self.lock.pack(fill="both", expand=True)
+
+    def lock_now(self) -> None:
+        self.was_enrolling = False
+        self.show_lock()
+
+    def on_unlocked(self) -> None:
+        if self.was_enrolling:
+            # Fresh enrollment: stop standard users from simply deleting the
+            # PIN and blocklist files to undo all of this.
+            if self.admin and restrict_data_dir():
+                self.say("Configuration locked to administrators.")
+            self.was_enrolling = False
+        if self.lock:
+            self.lock.destroy()
+            self.lock = None
+        self.body.pack(fill="both", expand=True)
+        self.say("Unlocked.")
+        if not self.installed._all:
+            self.installed.refresh()
+
+    def change_pin(self) -> None:
+        ChangePinDialog(self, on_done=lambda: self.say("PIN changed."))
+
+    def start_enforcement(self) -> None:
+        """Start the watchdog without touching widgets or asking for a PIN."""
+        if self.watchdog or not self._blocked_apps:
+            return
+        self.watchdog = Watchdog(lambda: self._blocked_apps,
+                                 lambda: self._dry_run, self.say)
+        self.watchdog.start()
+        self.watch_btn.configure(text="Stop app watchdog")
 
     # -- state --------------------------------------------------------------
     def persist(self) -> None:

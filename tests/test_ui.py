@@ -4,11 +4,10 @@ Needs a display. Skipped automatically where Tk cannot open one.
 """
 
 import time
-import tkinter as tk
 
 import pytest
 
-from blockguard import ui_app, ui_lists
+from blockguard import ui_app, ui_lists, ui_pin
 
 FAKE_INVENTORY = [
     {"name": "Google Chrome", "exe": "chrome", "running": True},
@@ -18,24 +17,32 @@ FAKE_INVENTORY = [
 
 
 @pytest.fixture
-def app(monkeypatch):
-    """A real App, with disk writes and the PC scan stubbed out."""
+def locked_app(monkeypatch, window):
+    """A real App sitting on its lock screen, with disk and PC access stubbed."""
     monkeypatch.setattr(ui_app, "save_data", lambda _data: None)
     monkeypatch.setattr(ui_app, "load_data", lambda: {
         "websites": ["facebook.com"], "apps": ["steam"], "dry_run": True})
     monkeypatch.setattr(ui_lists, "inventory", lambda: list(FAKE_INVENTORY))
+    monkeypatch.setattr(ui_app, "restrict_data_dir", lambda: True)
+    # A PIN already exists, so the lock screen opens in unlock mode.
+    monkeypatch.setattr(ui_app, "has_pin", lambda: True)
+    monkeypatch.setattr(ui_pin, "has_pin", lambda: True)
+    monkeypatch.setattr(ui_pin, "lockout_remaining", lambda: 0)
+    monkeypatch.setattr(ui_pin, "verify_pin", lambda value: value == "123456")
 
-    try:
-        root = tk.Tk()
-    except tk.TclError:
-        pytest.skip("no display available")
-    root.withdraw()
-    instance = ui_app.App(root)
-    root.update()
+    instance = ui_app.App(window)
+    window.update()
     yield instance
     if instance.watchdog:
         instance.watchdog.stop()
-    root.destroy()
+
+
+@pytest.fixture
+def app(locked_app):
+    """The same App, already unlocked."""
+    locked_app.on_unlocked()
+    locked_app.update()
+    return locked_app
 
 
 def drain_inventory(app):
@@ -130,6 +137,53 @@ class TestInstalledPane:
         # add_value still records it, but matching refuses to act on it.
         from blockguard.naming import app_blocked
         assert not app_blocked("explorer", app.apps.items())
+
+
+def is_shown(widget):
+    """Packed or not. winfo_ismapped() is useless here -- the test root is
+    withdrawn, so nothing is ever mapped."""
+    return widget.winfo_manager() != ""
+
+
+class TestLockScreen:
+    def test_starts_locked(self, locked_app):
+        assert locked_app.lock is not None
+        assert is_shown(locked_app.lock)
+
+    def test_lists_are_not_visible_while_locked(self, locked_app):
+        """A student must not be able to read or edit the blocklist."""
+        assert not is_shown(locked_app.body)
+
+    def test_wrong_pin_keeps_it_locked(self, locked_app):
+        locked_app.lock.entry.var.set("000000")
+        locked_app.lock.submit()
+        locked_app.update()
+        assert locked_app.lock is not None
+        assert "Wrong PIN" in locked_app.lock.message.cget("text")
+
+    def test_correct_pin_reveals_the_app(self, locked_app):
+        locked_app.lock.entry.var.set("123456")
+        locked_app.lock.submit()
+        locked_app.update()
+        assert locked_app.lock is None
+        assert is_shown(locked_app.body)
+
+    def test_lock_again_hides_the_app(self, app):
+        app.lock_now()
+        app.update()
+        assert app.lock is not None
+        assert not is_shown(app.body)
+
+    def test_pin_entry_accepts_only_six_digits(self, locked_app):
+        locked_app.lock.entry.var.set("12ab34xyz56789")
+        assert locked_app.lock.entry.value() == "123456"
+
+    def test_enforcement_runs_before_the_pin_is_entered(self, locked_app):
+        """The logon case: blocks must apply without anyone unlocking."""
+        locked_app.start_enforcement()
+        assert locked_app.watchdog is not None
+        assert locked_app.watchdog.is_alive()
+        assert locked_app.lock is not None      # still locked
 
 
 class TestActivityLog:

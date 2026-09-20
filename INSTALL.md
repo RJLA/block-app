@@ -114,7 +114,7 @@ both unticked by default:
 | Start enforcement at logon | Registers a scheduled task that runs the app elevated with `--enforce` at every logon |
 
 Leave **"Start enforcement at logon" unticked for now** — turn it on from
-inside the app once your lists are right (see 2.5).
+inside the app once your lists are right (see 2.6).
 
 ### 2.3 What the installer puts where
 
@@ -122,14 +122,47 @@ inside the app once your lists are right (see 2.5).
 |---|---|
 | `C:\Program Files\BlockGuard\BlockGuard.exe` | The application |
 | `C:\ProgramData\BlockGuard\blocklist.json` | Your lists — seeded from the default **only if no config exists** |
+| `C:\ProgramData\BlockGuard\security.json` | Salted PBKDF2 digest of the PIN — never the PIN itself |
 | `C:\ProgramData\BlockGuard\guard.log` | Timestamped activity log |
 | Scheduled task `BlockGuard` | Only if you ticked the logon option |
 
-### 2.4 Build your blocklist
+### 2.4 First run — create the PIN
 
-Launch **Block Guard** and accept the UAC prompt. The bottom status bar should
-read `administrator`; if it says `NOT elevated — enforcement disabled`, close
-it and use **Run as administrator**.
+Launch **Block Guard** and accept the UAC prompt. The first time it opens it
+asks you to **create a 6-digit PIN**, entered twice. Nothing else is reachable
+until you do.
+
+From then on, every launch opens on a lock screen and the blocklist stays
+hidden until the PIN is entered — so a student cannot see or change what is
+blocked. Use **Lock** (bottom right) to re-lock without closing the app, and
+**Change PIN** on the Enforcement tab to replace it (the current PIN is
+required).
+
+**Enforcement does not wait for the PIN.** When the logon task starts the app
+with `--enforce`, the watchdog and website blocks come up immediately while the
+window stays locked. Dismissing the lock screen does not unblock anything.
+
+The PIN itself is never stored — only a salted PBKDF2-SHA256 digest in
+`C:\ProgramData\BlockGuard\security.json`. After 3 wrong entries a lockout
+starts and grows with each further attempt, up to 15 minutes; it is written to
+disk, so closing and reopening the app does not clear it.
+
+On enrollment the app also restricts `C:\ProgramData\BlockGuard\` to
+administrators, so a standard user cannot simply delete the PIN and blocklist
+files to undo everything.
+
+> **Be clear about what this does and does not stop.** The PIN keeps ordinary
+> students out of the settings. It is not a defence against someone with
+> administrator rights on the machine: an admin can uninstall the app, delete
+> the config, edit the registry directly, or end the process from Task Manager.
+> If students have admin on these PCs, no application-level control will hold —
+> take admin away from their accounts first, and run Block Guard elevated from
+> a separate account.
+
+### 2.5 Build your blocklist
+
+The bottom status bar should read `administrator`; if it says `NOT elevated —
+enforcement disabled`, close it and use **Run as administrator**.
 
 **The easy way — the "Installed apps" tab.** It scans this PC (uninstall
 registry plus running processes) and lists what it finds, with apps that are
@@ -155,7 +188,7 @@ Changes save immediately — there is no Save button.
 > `explorer` to the list will not terminate your desktop; the Check box will
 > report it as *not blocked*. The same protection covers Block Guard itself.
 
-### 2.5 Turn on enforcement
+### 2.6 Turn on enforcement
 
 On the **Enforcement** tab:
 
@@ -219,6 +252,9 @@ watchdog**, **Stop running at logon**.
 | Nothing happens at logon | The task only exists if you ticked the installer option or clicked **Run at logon**. Verify with `schtasks /Query /TN BlockGuard`. |
 | Want the blocks gone immediately | Delete the keys under `HKLM\SOFTWARE\Policies\Google\Chrome` and `...\Microsoft\Edge`, then `schtasks /Delete /F /TN BlockGuard`. |
 | SmartScreen blocks the installer | Unsigned binary — **More info → Run anyway**, or sign it. |
+| Forgot the PIN | As an administrator, delete `C:\ProgramData\BlockGuard\security.json`. The app will ask you to enroll a new PIN on the next launch; the blocklist is untouched. |
+| "Too many wrong attempts" | The lockout is deliberate and persists across restarts. Wait for the countdown, or clear it by deleting `security.json` as an administrator. |
+| A student edited the blocklist anyway | They have administrator rights. Remove those first — no application-level lock survives an admin account. |
 
 Activity is logged to `C:\ProgramData\BlockGuard\guard.log`; the path is shown
 at the bottom of the **Activity** tab.
