@@ -1,0 +1,12 @@
+{
+  "websites": [
+    "facebook.com",
+    "instagram.com",
+    "tiktok.com",
+    "reddit.com"
+  ],
+  "apps": [
+    "steam"
+  ],
+  "dry_run": true
+}

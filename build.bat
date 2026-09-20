@@ -1,5 +1,5 @@
 @echo off
-REM Build AllowlistGuard.exe  --  run on a Windows 10/11 machine with Python 3.9+
+REM Build BlockGuard.exe  --  run on a Windows 10/11 machine with Python 3.9+
 REM Uses the repo-local .venv and creates it on first run; the system Python is
 REM only ever used to bootstrap that virtual environment.
 setlocal
@@ -20,8 +20,8 @@ if not exist "%VENV_PY%" (
   "%VENV_PY%" -m pip install -r requirements-dev.txt || (popd & exit /b 1)
 )
 
-if not exist default_allowlist.json (
-  echo {"websites": ["google.com", "wikipedia.org"], "apps": ["chrome", "msedge", "notepad"], "dry_run": true} > default_allowlist.json
+if not exist default_blocklist.json (
+  echo {"websites": [], "apps": [], "dry_run": true} > default_blocklist.json
 )
 
 if not exist assets\mascot.ico (
@@ -33,14 +33,14 @@ if not exist assets\mascot.ico (
   --onefile ^
   --windowed ^
   --noconfirm ^
-  --name AllowlistGuard ^
+  --name BlockGuard ^
   --uac-admin ^
   --icon "assets\mascot.ico" ^
-  --add-data "default_allowlist.json;." ^
+  --add-data "default_blocklist.json;." ^
   --add-data "assets;assets" ^
-  allowlist_guard.py || (popd & exit /b 1)
+  block_guard.py || (popd & exit /b 1)
 
 echo.
-echo Done: dist\AllowlistGuard.exe
+echo Done: dist\BlockGuard.exe
 popd
 endlocal

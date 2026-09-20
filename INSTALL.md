@@ -1,4 +1,7 @@
-# Installing Allowlist Guard on a PC with nothing installed
+# Installing Block Guard on a PC with nothing installed
+
+Block Guard keeps a **blocklist**: you list the websites and apps you want
+stopped, and everything you do not list is left alone.
 
 The target PC needs **no Python, no pip, no dependencies**. You build a
 self-contained `.exe` once on a machine that has Python, then carry a single
@@ -8,8 +11,7 @@ installer file over.
 - **Part 2** runs on *each* target PC (needs nothing but Windows 10/11 and an
   administrator account).
 
-If someone has already handed you `AllowlistGuardSetup.exe`, skip straight to
-Part 2.
+If someone has already handed you `BlockGuardSetup.exe`, skip to Part 2.
 
 ---
 
@@ -27,8 +29,8 @@ Build on the **oldest Windows version you need to support**, and on **64-bit**
 unless a target is 32-bit — the output only runs on the architecture you build
 for.
 
-PyInstaller and Pillow are **not** prerequisites — `build.bat` installs them
-into a repo-local `.venv` on first run. See `requirements-dev.txt`.
+PyInstaller, Pillow and pytest are **not** prerequisites — `build.bat` installs
+them into a repo-local `.venv` on first run. See `requirements-dev.txt`.
 
 ### 1.2 Build the executable
 
@@ -39,12 +41,12 @@ build.bat
 ```
 
 On first run this creates a **repo-local virtual environment in `.venv`** and
-installs the build tools from `requirements-dev.txt` into it. Your system
-Python is only used to bootstrap that venv — nothing is installed globally.
-Later runs reuse the existing `.venv`.
+installs the build tools into it. Your system Python is only used to bootstrap
+that venv — nothing is installed globally. Later runs reuse the existing
+`.venv`.
 
-The output is **`dist\AllowlistGuard.exe`** (~10 MB, one file), bundling the
-CPython interpreter, tkinter, the mascot assets, and `default_allowlist.json` —
+The output is **`dist\BlockGuard.exe`** (~10 MB, one file), bundling the
+CPython interpreter, tkinter, the mascot assets, and `default_blocklist.json` —
 which is why the target PC needs nothing.
 
 To set the venv up by hand instead:
@@ -54,37 +56,31 @@ python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 ```
 
-The `--uac-admin` flag embeds a manifest, so the app always requests elevation
-on launch.
-
 > The mascot assets in `assets/` are committed to the repo, so a normal build
 > needs nothing extra. Only if you change `pepe_cry.png` do you need to
-> regenerate them — that step uses Pillow from the venv and is the only part of
-> the project that isn't stdlib-only:
+> regenerate them:
 >
 > ```bat
 > .venv\Scripts\python.exe tools\make_assets.py
 > ```
 
-At this point `dist\AllowlistGuard.exe` is already usable — you can copy that
-single file to the target PC and run it. The installer below just adds
-shortcuts, the logon task, and clean removal.
+### 1.3 Run the tests (optional)
 
-### 1.3 Build the installer (recommended)
+```bat
+.venv\Scripts\python.exe -m pytest --cov=blockguard
+```
+
+### 1.4 Build the installer (recommended)
 
 ```bat
 iscc installer.iss
 ```
 
-Produces **`Output\AllowlistGuardSetup.exe`**. If `iscc` isn't on `PATH`, use
-the full path, typically:
+Produces **`Output\BlockGuardSetup.exe`**. If `iscc` isn't on `PATH`, use the
+full path, typically `"C:\Program Files (x86)\Inno Setup 6\iscc.exe"`.
 
-```bat
-"C:\Program Files (x86)\Inno Setup 6\iscc.exe" installer.iss
-```
-
-**Copy that one file to the target PC** — USB, network share, whatever. Nothing
-else needs to travel with it.
+**Copy that one file to the target PC.** Nothing else needs to travel with it.
+The bare `dist\BlockGuard.exe` also works on its own if you skip the installer.
 
 ---
 
@@ -98,16 +94,16 @@ else needs to travel with it.
 
 ### 2.2 Run the installer
 
-Double-click **`AllowlistGuardSetup.exe`**.
+Double-click **`BlockGuardSetup.exe`**.
 
 **Expect a SmartScreen warning.** The executable is unsigned, so Windows shows
-*"Windows protected your PC"*. Click **More info → Run anyway**. The only clean
-fix is signing the binary with a real code-signing certificate.
+*"Windows protected your PC"*. Click **More info → Run anyway**. Signing the
+binary with a real certificate is the only clean fix.
 
 **Expect possible antivirus complaints.** A PyInstaller one-file build that
 terminates processes and writes browser policy to `HKLM` matches malware
-heuristics almost exactly. You may need to add an exclusion for
-`C:\Program Files\AllowlistGuard\`.
+heuristics closely. You may need an exclusion for
+`C:\Program Files\BlockGuard\`.
 
 Click **Yes** at the UAC prompt, then walk the wizard. Two optional checkboxes,
 both unticked by default:
@@ -117,91 +113,95 @@ both unticked by default:
 | Create a desktop shortcut | Adds a desktop icon |
 | Start enforcement at logon | Registers a scheduled task that runs the app elevated with `--enforce` at every logon |
 
-Leave **"Start enforcement at logon" unticked for now.** Turn it on later, from
-inside the app, once you've confirmed your lists are right — see 2.5.
+Leave **"Start enforcement at logon" unticked for now** — turn it on from
+inside the app once your lists are right (see 2.5).
 
 ### 2.3 What the installer puts where
 
 | Path | Contents |
 |---|---|
-| `C:\Program Files\AllowlistGuard\AllowlistGuard.exe` | The application |
-| `C:\ProgramData\AllowlistGuard\allowlist.json` | Your lists — seeded from the default **only if no config exists** |
-| `C:\ProgramData\AllowlistGuard\guard.log` | Timestamped activity log |
-| Scheduled task `AllowlistGuard` | Only if you ticked the logon option |
+| `C:\Program Files\BlockGuard\BlockGuard.exe` | The application |
+| `C:\ProgramData\BlockGuard\blocklist.json` | Your lists — seeded from the default **only if no config exists** |
+| `C:\ProgramData\BlockGuard\guard.log` | Timestamped activity log |
+| Scheduled task `BlockGuard` | Only if you ticked the logon option |
 
-### 2.4 First run — build your lists
+### 2.4 Build your blocklist
 
-Launch **Allowlist Guard** and accept the UAC prompt. The bottom status bar
-should read `administrator`; if it says `NOT elevated — enforcement disabled`,
-close it and use **Run as administrator**.
+Launch **Block Guard** and accept the UAC prompt. The bottom status bar should
+read `administrator`; if it says `NOT elevated — enforcement disabled`, close
+it and use **Run as administrator**.
 
-On the **Lists** tab:
+**The easy way — the "Installed apps" tab.** It scans this PC (uninstall
+registry plus running processes) and lists what it finds, with apps that are
+running right now sorted to the top. Search by name, select one or more rows,
+and click **Block selected** — they are added to the blocked apps list with the
+correct executable name already worked out. Double-clicking a row does the
+same.
 
-1. Add domains under *Allowed websites* — `example.com` form. Input is
-   normalized, so `https://www.Example.com/path` becomes `example.com`, and a
-   domain automatically covers its subdomains.
-2. Add programs under *Allowed apps* — `slack.exe`, a full path, or just
-   `slack` all normalize to `slack`.
-3. Use the **Check** box to test any name before committing to it. A blocked
-   lookup shows the crying frog and **NOT ON THE LIST**.
+**The manual way — the "Blocklists" tab.** Type entries directly:
+
+- *Blocked websites* — `facebook.com` form. Input is normalized, so
+  `https://www.Facebook.com/feed` becomes `facebook.com`, and a domain
+  automatically covers its subdomains.
+- *Blocked apps* — `steam.exe`, a full path, or just `steam` all normalize to
+  `steam`.
+
+Use the **Check** box to test any entry. A blocked lookup shows the crying frog
+and **BLOCKED**; anything else reports **not blocked**.
 
 Changes save immediately — there is no Save button.
 
-> **Add every program you actually need before going live**, including your
-> browser. Windows system processes and anything under `C:\Windows` are always
-> spared, but ordinary apps are not.
+> **Critical Windows processes are refused even if you list them.** Adding
+> `explorer` to the list will not terminate your desktop; the Check box will
+> report it as *not blocked*. The same protection covers Block Guard itself.
 
 ### 2.5 Turn on enforcement
 
-On the **Enforcement** tab, in this order:
+On the **Enforcement** tab:
 
 **Step 1 — Dry run the app watchdog.** Leave *"Dry run (log only, don't
 terminate)"* **ticked** and click **Start app watchdog**. Every 5 seconds it
 scans running processes and writes `[dry run] would terminate <name> (pid N)`
-to the **Activity** tab for anything not on your list. Let it run a few minutes
-while you use the PC normally.
-
-**This dry-run list is your real safety check.** Anything in it that you need,
-add to the app allowlist now — the watchdog re-reads the list on every scan, so
-additions take effect within about 5 seconds, with no restart.
+to the **Activity** tab for anything on your blocklist. Confirm it names only
+what you intend.
 
 **Step 2 — Go live.** Click **Stop app watchdog**, untick *Dry run*, then click
-**Start app watchdog** and confirm the warning. Unlisted programs are now
-terminated as they appear.
+**Start app watchdog** and confirm the warning, which lists exactly what will
+be terminated.
 
 > Stopping first is deliberate. The dry-run checkbox is read live on every
-> scan, so unticking it while the watchdog runs goes straight to killing
+> scan, so unticking it while the watchdog runs goes straight to terminating
 > processes **without** showing the confirmation dialog.
 
-**Step 3 — Website policy.** Click **Apply website policy**. This writes
-Chrome and Edge enterprise policy: block everything (`URLBlocklist = *`), then
-allow your listed domains. The status label flips to **active**.
+The blocklist itself is re-read on every scan, so adding an app takes effect
+within about 5 seconds with no restart.
+
+**Step 3 — Website blocks.** Click **Apply website blocks**. This writes the
+listed domains to Chrome and Edge `URLBlocklist` policy. The status label flips
+to **active**.
 
 - **Restart the browser** — policy only takes effect on a fresh launch.
-- **Verify** at `chrome://policy` (or `edge://policy`) → *Reload policies*. You
-  should see `URLBlocklist` and `URLAllowlist` populated.
-- **Firefox and other browsers are not covered.** Block them through the app
-  watchdog if you need full coverage.
+- **Verify** at `chrome://policy` (or `edge://policy`) → *Reload policies*.
+- **Firefox and other browsers are not covered.** Block them as apps instead.
 
 **Step 4 — Survive reboots.** Click **Run at logon** to register the scheduled
-task (same thing the installer checkbox does). Without this, the watchdog stops
-when you close the app; the website policy persists either way, since it lives
-in the registry.
+task. Without it the watchdog stops when you close the app; the website policy
+persists either way, since it lives in the registry.
 
 ---
 
 ## Uninstalling
 
-**Settings → Apps → Allowlist Guard → Uninstall**, or the Start-menu entry.
+**Settings → Apps → Block Guard → Uninstall**, or the Start-menu entry.
 
 The uninstaller deliberately unlocks the machine: it deletes the scheduled task
-and all four policy registry keys, so you are not left with a browser that
-blocks everything after the app is gone.
+and the policy registry keys, so you are not left with blocked sites after the
+app is gone.
 
-It does **not** delete `C:\ProgramData\AllowlistGuard\` — your lists and log
-survive a reinstall. Remove that folder by hand if you want a clean slate.
+It does **not** delete `C:\ProgramData\BlockGuard\` — your lists and log survive
+a reinstall. Remove that folder by hand for a clean slate.
 
-To undo enforcement without uninstalling: **Remove website policy**, **Stop app
+To undo enforcement without uninstalling: **Remove website blocks**, **Stop app
 watchdog**, **Stop running at logon**.
 
 ---
@@ -211,13 +211,14 @@ watchdog**, **Stop running at logon**.
 | Symptom | Cause / fix |
 |---|---|
 | `NOT elevated — enforcement disabled` | Not running as admin. Relaunch via **Run as administrator**, or accept the app's offer to restart elevated. |
-| Websites still load after applying policy | The browser wasn't restarted. Check `chrome://policy` → *Reload policies*. |
-| Firefox ignores the block entirely | Expected — only Chrome and Edge policy is written. Block `firefox` via the app watchdog. |
-| The watchdog kills something you need | Add it to the app allowlist — it applies on the next 5-second scan. Use dry run first to avoid this. |
-| Watchdog does nothing in live mode | Confirm *Dry run* is unticked, the watchdog is started, and the button reads **Stop app watchdog**. |
-| Nothing happens at logon | The task only exists if you ticked the installer option or clicked **Run at logon**. Verify with `schtasks /Query /TN AllowlistGuard`. |
-| Locked out and can't open the app | Boot into Safe Mode, then delete the policy keys under `HKLM\SOFTWARE\Policies\Google\Chrome` and `...\Microsoft\Edge`, and run `schtasks /Delete /F /TN AllowlistGuard`. |
+| Blocked sites still load | The browser wasn't restarted. Check `chrome://policy` → *Reload policies*. |
+| Firefox ignores the block | Expected — only Chrome and Edge policy is written. Block `firefox` as an app instead. |
+| A blocked app keeps running | Confirm the watchdog is started, *Dry run* is unticked, and the name matches. The Check box tells you what the app will actually match on. |
+| Listing `explorer` does nothing | By design — critical Windows processes are protected and can never be terminated. |
+| An app isn't in the "Installed apps" list | Not every installer records a usable executable. Launch the app, tick **Running now only**, and it will appear — or type its name manually. |
+| Nothing happens at logon | The task only exists if you ticked the installer option or clicked **Run at logon**. Verify with `schtasks /Query /TN BlockGuard`. |
+| Want the blocks gone immediately | Delete the keys under `HKLM\SOFTWARE\Policies\Google\Chrome` and `...\Microsoft\Edge`, then `schtasks /Delete /F /TN BlockGuard`. |
 | SmartScreen blocks the installer | Unsigned binary — **More info → Run anyway**, or sign it. |
 
-Activity is logged to `C:\ProgramData\AllowlistGuard\guard.log`; the path is
-shown at the bottom of the **Activity** tab.
+Activity is logged to `C:\ProgramData\BlockGuard\guard.log`; the path is shown
+at the bottom of the **Activity** tab.

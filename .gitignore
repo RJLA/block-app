@@ -6,6 +6,12 @@ __pycache__/
 venv/
 env/
 
+# --- Tests ----------------------------------------------------------------
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
 # --- PyInstaller (build.bat) ----------------------------------------------
 build/
 dist/
@@ -17,8 +23,8 @@ Output/
 *.iss.bak
 
 # --- Local runtime artifacts ----------------------------------------------
-# The live config and log belong in %ProgramData%\AllowlistGuard, never here.
-allowlist.json
+# The live config and log belong in %ProgramData%\BlockGuard, never here.
+blocklist.json
 guard.log
 
 # --- Editors / OS ---------------------------------------------------------

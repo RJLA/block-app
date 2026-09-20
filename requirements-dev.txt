@@ -6,5 +6,7 @@
 #
 # build.bat creates and populates .venv automatically if it is missing.
 
-pyinstaller>=6.0          # freezes allowlist_guard.py into a standalone .exe
+pyinstaller>=6.0          # freezes block_guard.py into a standalone .exe
 pillow>=10.0              # tools/make_assets.py only, to regenerate the mascot
+pytest>=8.0               # unit tests for the matching / inventory logic
+pytest-cov>=5.0           # coverage reporting
