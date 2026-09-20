@@ -1,0 +1,28 @@
+# --- Python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# --- PyInstaller (build.bat) ----------------------------------------------
+build/
+dist/
+*.spec
+*.manifest
+
+# --- Inno Setup (installer.iss) -------------------------------------------
+Output/
+*.iss.bak
+
+# --- Local runtime artifacts ----------------------------------------------
+# The live config and log belong in %ProgramData%\AllowlistGuard, never here.
+allowlist.json
+guard.log
+
+# --- Editors / OS ---------------------------------------------------------
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

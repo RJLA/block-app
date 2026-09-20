@@ -1,0 +1,10 @@
+# Build-time only. The application itself is stdlib-only -- nothing here ships
+# inside AllowlistGuard.exe except what PyInstaller bundles of CPython itself.
+#
+#   python -m venv .venv
+#   .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+#
+# build.bat creates and populates .venv automatically if it is missing.
+
+pyinstaller>=6.0          # freezes allowlist_guard.py into a standalone .exe
+pillow>=10.0              # tools/make_assets.py only, to regenerate the mascot
