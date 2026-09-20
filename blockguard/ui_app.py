@@ -16,6 +16,7 @@ from .pin import has_pin
 from .processes import Watchdog
 from .sites import apply_site_policy, clear_site_policy, site_policy_active
 from .single_instance import acquire, consume_show_request, request_show
+from .sound import play_blocked, shutdown as shutdown_sound
 from .system import (
     install_logon_task, is_admin, relaunch_as_admin, remove_logon_task,
     restrict_data_dir,
@@ -281,6 +282,7 @@ class App(ttk.Frame):
             return
         if self.watchdog:
             self.watchdog.stop()
+        shutdown_sound()
         self.winfo_toplevel().destroy()
 
     # -- state --------------------------------------------------------------
@@ -315,6 +317,7 @@ class App(ttk.Frame):
         if now - self._last_toast.get(exe, 0) < TOAST_COOLDOWN_SECONDS:
             return
         self._last_toast[exe] = now
+        play_blocked()                     # shares the cooldown with the toast
         try:
             BlockedToast(self.winfo_toplevel(), self.display_name(exe))
         except tk.TclError as exc:

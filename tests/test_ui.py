@@ -187,6 +187,24 @@ class TestLockScreen:
 
 
 class TestBlockedNotice:
+    def test_a_kill_also_plays_the_sound(self, app, monkeypatch):
+        played = []
+        monkeypatch.setattr(ui_app, "BlockedToast", lambda master, name: None)
+        monkeypatch.setattr(ui_app, "play_blocked", lambda: played.append(True))
+        app.note_blocked("steam")
+        app._drain_messages()
+        assert played == [True]
+
+    def test_the_sound_shares_the_toast_cooldown(self, app, monkeypatch):
+        """Twelve dying browser processes are one notice and one sound."""
+        played = []
+        monkeypatch.setattr(ui_app, "BlockedToast", lambda master, name: None)
+        monkeypatch.setattr(ui_app, "play_blocked", lambda: played.append(True))
+        for _ in range(12):
+            app.note_blocked("chrome")
+        app._drain_messages()
+        assert len(played) == 1
+
     def test_a_kill_raises_one_toast(self, app, monkeypatch):
         shown = []
         monkeypatch.setattr(ui_app, "BlockedToast",

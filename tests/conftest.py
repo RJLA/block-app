@@ -12,6 +12,12 @@ import tkinter as tk
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def silence_sound(monkeypatch):
+    """Tests must not make noise. test_sound.py re-enables it deliberately."""
+    monkeypatch.setattr("blockguard.sound.enabled", False)
+
+
 @pytest.fixture(scope="session")
 def tk_root():
     try:

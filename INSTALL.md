@@ -270,15 +270,19 @@ mascot:
 > **Steam is blocked**
 > Ask your Tito or Mommy Joy to unblock it.
 
-It dismisses itself after 7 seconds, or on click. If an app spawns many
+A short "failure trumpet" plays at the same moment. It dismisses itself after
+7 seconds, or on click. If an app spawns many
 processes — a browser is typically a dozen — they are all closed, but only one
 notice is shown, and the same app will not raise another for 30 seconds.
 
 Where possible the notice uses the app's proper name from the Installed apps
 scan ("Google Chrome" rather than "chrome").
 
-The notice does **not** appear during a dry run, since nothing is actually
-being closed.
+Neither the notice nor the sound appears during a dry run, since nothing is
+actually being closed.
+
+The sound is played through Windows MCI. A PC with no audio device, or a
+remote session, simply gets the notice without it.
 
 > Termination is a forced kill of the process tree, so anything unsaved in a
 > blocked app is lost without a prompt. Keep the blocklist to things like games

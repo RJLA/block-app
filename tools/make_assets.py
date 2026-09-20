@@ -10,6 +10,7 @@ assets/.
 """
 
 import os
+import shutil
 import sys
 
 from PIL import Image, ImageDraw
@@ -17,6 +18,10 @@ from PIL import Image, ImageDraw
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCE = os.path.join(ROOT, "pepe_cry.png")
 ASSETS = os.path.join(ROOT, "assets")
+
+# Copied verbatim -- no processing, just a stable name for the app to load.
+SOUND_SOURCE = os.path.join(ROOT, "universfield-failure-trumpet-242645.mp3")
+SOUND_TARGET = "blocked.mp3"
 
 # Sizes the UI loads directly with tk.PhotoImage.
 PNG_SIZES = (48, 96)
@@ -79,6 +84,13 @@ def main() -> int:
     ico_path = os.path.join(ASSETS, "mascot.ico")
     mascot.save(ico_path, sizes=[(s, s) for s in ICO_SIZES])
     print(f"wrote {os.path.relpath(ico_path, ROOT)} ({len(ICO_SIZES)} sizes)")
+
+    if os.path.exists(SOUND_SOURCE):
+        target = os.path.join(ASSETS, SOUND_TARGET)
+        shutil.copyfile(SOUND_SOURCE, target)
+        print(f"wrote {os.path.relpath(target, ROOT)}")
+    else:
+        print(f"no sound source at {SOUND_SOURCE}", file=sys.stderr)
     return 0
 
 
