@@ -200,38 +200,32 @@ Changes save immediately — there is no Save button.
 > `explorer` to the list will not terminate your desktop; the Check box will
 > report it as *not blocked*. The same protection covers Block Guard itself.
 
-### 2.6 Turn on enforcement
+### 2.6 Turn on protection
 
-On the **Enforcement** tab:
+Everything lives on the **Enforcement** tab. The card at the top always tells
+you the current state, and one button switches it.
 
-**Step 1 — Dry run the app watchdog.** Leave *"Dry run (log only, don't
-terminate)"* **ticked** and click **Start app watchdog**. Every 5 seconds it
-scans running processes and writes `[dry run] would terminate <name> (pid N)`
-to the **Activity** tab for anything on your blocklist. Confirm it names only
-what you intend.
+**Step 1 — Try it safely first.** *Practice mode* is already ticked, which
+means nothing will actually be closed. Press **Turn protection on**. The
+heading changes to *Practice mode*.
 
-**Step 2 — Go live.** Click **Stop app watchdog**, untick *Dry run*, then click
-**Start app watchdog** and confirm the warning, which lists exactly what will
-be terminated.
+Now open one of the apps you blocked and watch the **Activity** tab. You should
+see `[dry run] would terminate ...`. That is your proof the list is right, with
+nothing closed and no one interrupted.
 
-> Stopping first is deliberate. The dry-run checkbox is read live on every
-> scan, so unticking it while the watchdog runs goes straight to terminating
-> processes **without** showing the confirmation dialog.
+**Step 2 — Go live.** Untick **Practice mode**. You will be shown exactly which
+apps and websites are about to be blocked, and asked to confirm. The heading
+turns green: *Protection is ON*.
 
-The blocklist itself is re-read on every scan, so adding an app takes effect
-within about 5 seconds with no restart.
+**Step 3 — Restart the browser.** Close Chrome or Edge completely and reopen
+it. Websites stay reachable until the browser restarts — this is the single
+most common reason people think it is not working.
 
-**Step 3 — Website blocks.** Click **Apply website blocks**. This writes the
-listed domains to Chrome and Edge `URLBlocklist` policy. The status label flips
-to **active**.
+**Step 4 — Make it stick.** Tick **Turn on automatically whenever this PC
+starts**. From then on it runs hidden from every logon.
 
-- **Restart the browser** — policy only takes effect on a fresh launch.
-- **Verify** at `chrome://policy` (or `edge://policy`) → *Reload policies*.
-- **Firefox and other browsers are not covered.** Block them as apps instead.
-
-**Step 4 — Survive reboots.** Click **Start at logon (background)** to register
-the scheduled task. Without it the watchdog stops when you close the app; the
-website policy persists either way, since it lives in the registry.
+To stop everything, press **Turn protection off**: apps stop being watched and
+website blocking is removed in one go.
 
 ---
 
@@ -336,11 +330,11 @@ watchdog**, **Stop running at logon**.
 | `NOT elevated — enforcement disabled` | Not running as admin. Relaunch via **Run as administrator**, or accept the app's offer to restart elevated. |
 | Blocked sites still load | The browser wasn't restarted. Check `chrome://policy` → *Reload policies*. |
 | Firefox ignores the block | Expected — only Chrome and Edge policy is written. Block `firefox` as an app instead. |
-| A blocked app keeps running | Confirm the watchdog is started, *Dry run* is unticked, and the name matches. The Check box tells you what the app will actually match on. |
+| A blocked app keeps running | Check the Enforcement tab reads *Protection is ON*, not *Practice mode*, and that the name matches. The Check box on the Blocklists tab tells you what the app will actually match on. |
 | Listing `explorer` does nothing | By design — critical Windows processes are protected and can never be terminated. |
 | An app isn't in the "Installed apps" list | Not every installer records a usable executable. Launch the app, tick **Running now only**, and it will appear — or type its name manually. |
-| Nothing happens at logon | The task only exists if you ticked the installer option or clicked **Start at logon**. Verify with `schtasks /Query /TN BlockGuard`. |
-| Blocks stopped working after moving the exe | The logon task stores an absolute path. Re-register it with **Start at logon** from the new location, or reinstall. |
+| Nothing happens at logon | Tick **Turn on automatically whenever this PC starts** on the Enforcement tab. Verify with `schtasks /Query /TN BlockGuard`. |
+| Blocks stopped working after moving the exe | The logon task stores an absolute path. Untick and re-tick **Turn on automatically** from the new location, or reinstall. |
 | Double-clicking Block Guard seems to do nothing | It is already running in the background; the launch signals that copy, and its lock screen should appear within a second. If it does not, check Task Manager for `BlockGuard.exe`. |
 | Want the blocks gone immediately | Delete the keys under `HKLM\SOFTWARE\Policies\Google\Chrome` and `...\Microsoft\Edge`, then `schtasks /Delete /F /TN BlockGuard`. |
 | SmartScreen blocks the installer | Unsigned binary — **More info → Run anyway**, or sign it. |

@@ -31,6 +31,7 @@ def locked_app(monkeypatch, window):
     monkeypatch.setattr(ui_pin, "verify_pin", lambda value: value == "123456")
 
     instance = ui_app.App(window)
+    instance.admin = True          # otherwise every action prompts for UAC
     window.update()
     yield instance
     if instance.watchdog:
@@ -285,6 +286,84 @@ class TestBackgroundMode:
         dog = app.watchdog
         app.on_close()
         assert dog._stop.is_set()
+
+
+class TestProtectionSwitch:
+    @pytest.fixture(autouse=True)
+    def _no_real_policy(self, monkeypatch):
+        self.applied, self.cleared = [], []
+        monkeypatch.setattr(ui_app, "apply_site_policy",
+                            lambda domains: self.applied.append(list(domains)) or ["Chrome"])
+        monkeypatch.setattr(ui_app, "clear_site_policy",
+                            lambda: self.cleared.append(True))
+        monkeypatch.setattr(ui_app, "site_policy_active", lambda: bool(self.applied))
+        monkeypatch.setattr(ui_app, "logon_task_exists", lambda: False)
+
+    def test_starts_off(self, app):
+        assert app.protection_on() is False
+        assert "OFF" in app.status_big.cget("text")
+
+    def test_turning_on_covers_apps_and_websites(self, app):
+        """One button has to do both, or new users only ever do half."""
+        app.turn_protection_on()
+        assert app.protection_on() is True
+        assert self.applied == [["facebook.com"]]
+
+    def test_practice_mode_is_labelled_not_on(self, app):
+        app.dry_run.set(True)
+        app.turn_protection_on()
+        assert "Practice" in app.status_big.cget("text")
+
+    def test_live_mode_says_on(self, app, monkeypatch):
+        monkeypatch.setattr(ui_app.messagebox, "askyesno", lambda *a, **k: True)
+        app.dry_run.set(False)
+        app.turn_protection_on()
+        assert "ON" in app.status_big.cget("text")
+
+    def test_going_live_asks_first(self, app, monkeypatch):
+        asked = []
+        monkeypatch.setattr(ui_app.messagebox, "askyesno",
+                            lambda *a, **k: asked.append(a) or False)
+        app.dry_run.set(False)
+        app.turn_protection_on()
+        assert asked, "must confirm before closing real programs"
+        assert app.protection_on() is False
+
+    def test_practice_mode_needs_no_confirmation(self, app, monkeypatch):
+        monkeypatch.setattr(ui_app.messagebox, "askyesno",
+                            lambda *a, **k: pytest.fail("should not ask"))
+        app.dry_run.set(True)
+        app.turn_protection_on()
+        assert app.protection_on() is True
+
+    def test_empty_lists_explain_rather_than_start(self, app, monkeypatch):
+        told = []
+        monkeypatch.setattr(ui_app.messagebox, "showinfo",
+                            lambda title, msg: told.append(msg))
+        app.sites.set_items([])
+        app.apps.set_items([])
+        app.persist()
+        app.turn_protection_on()
+        assert app.protection_on() is False
+        assert told and "Installed apps" in told[0]
+
+    def test_turning_off_stops_everything(self, app):
+        app.turn_protection_on()
+        dog = app.watchdog
+        app.turn_protection_off()
+        assert app.protection_on() is False
+        assert dog._stop.is_set()
+        assert self.cleared == [True]
+
+    def test_button_text_follows_state(self, app):
+        assert "Turn protection on" in app.protect_btn.cget("text")
+        app.turn_protection_on()
+        assert "Turn protection off" in app.protect_btn.cget("text")
+
+    def test_detail_reports_both_lists(self, app):
+        app.refresh_state()
+        detail = app.status_detail.cget("text")
+        assert "Websites:" in detail and "Apps:" in detail
 
 
 class TestActivityLog:

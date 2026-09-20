@@ -19,8 +19,8 @@ from .sites import apply_site_policy, clear_site_policy, site_policy_active
 from .single_instance import acquire, consume_show_request, request_show
 from .sound import play_blocked, shutdown as shutdown_sound
 from .system import (
-    install_logon_task, is_admin, relaunch_as_admin, remove_logon_task,
-    restrict_data_dir,
+    install_logon_task, is_admin, logon_task_exists, relaunch_as_admin,
+    remove_logon_task, restrict_data_dir,
 )
 from .ui_lists import InstalledPane, ListPane
 from .ui_pin import ChangePinDialog, LockScreen
@@ -39,13 +39,18 @@ TOAST_COOLDOWN_SECONDS = 30
 SHOW_POLL_MS = 600
 
 ENFORCEMENT_HELP = (
-    "Websites: applies Chrome and Edge enterprise policy so the listed domains "
-    "are blocked. Everything else stays reachable. Takes effect when the "
-    "browser restarts; verify at chrome://policy. Firefox and other browsers "
-    "are NOT covered — block them as apps instead.\n\n"
-    "Apps: terminates running programs that ARE on the blocked list. Anything "
-    "you have not listed is left alone, and critical Windows processes are "
-    "refused even if you list them."
+    "Good to know:  after turning protection on, close and reopen Chrome or "
+    "Edge — websites stay reachable until the browser restarts.  Other "
+    "browsers such as Firefox ignore website blocking, so block those as apps "
+    "instead.  Only the things on your lists are affected; everything else is "
+    "left alone, and important Windows programs can never be blocked."
+)
+
+TURN_ON_WARNING = (
+    "Protection will start now.\n\n"
+    "These apps will close whenever they are opened:\n{apps}\n\n"
+    "These websites will stop loading:\n{sites}\n\n"
+    "Turn protection on?"
 )
 
 
@@ -117,6 +122,7 @@ class App(ttk.Frame):
         ttk.Button(status, text="Lock", width=6,
                    command=self.lock_now).pack(side="right")
 
+        self.autostart.set(logon_task_exists())
         self.refresh_state()
         self.after(POLL_MS, self._drain_messages)
 
@@ -164,41 +170,52 @@ class App(ttk.Frame):
         self.installed.pack(fill="both", expand=True)
 
     def _build_enforcement(self, parent) -> None:
-        ttk.Label(parent, wraplength=600, justify="left",
-                  text=ENFORCEMENT_HELP).pack(fill="x", pady=(0, 10))
+        """One switch, plain words, and the current state always visible."""
+        card = ttk.LabelFrame(parent, text="Protection", padding=14)
+        card.pack(fill="x")
 
-        srow = ttk.Frame(parent)
-        srow.pack(fill="x", pady=3)
-        ttk.Button(srow, text="Apply website blocks",
-                   command=self.apply_sites).pack(side="left")
-        ttk.Button(srow, text="Remove website blocks",
-                   command=self.clear_sites).pack(side="left", padx=6)
-        self.site_state = ttk.Label(srow, text="")
-        self.site_state.pack(side="left", padx=10)
+        top = ttk.Frame(card)
+        top.pack(fill="x")
+        self.status_big = tk.Label(top, font=("TkDefaultFont", 15, "bold"),
+                                   anchor="w")
+        self.status_big.pack(side="left")
+        self.protect_btn = ttk.Button(top, width=22,
+                                      command=self.toggle_protection)
+        self.protect_btn.pack(side="right")
 
-        arow = ttk.Frame(parent)
-        arow.pack(fill="x", pady=(12, 3))
+        self.status_detail = tk.Label(card, anchor="w", justify="left",
+                                      foreground="#374151")
+        self.status_detail.pack(fill="x", pady=(8, 0))
+
+        self.status_hint = tk.Label(card, anchor="w", justify="left",
+                                    wraplength=620, foreground="#6b7280")
+        self.status_hint.pack(fill="x", pady=(6, 0))
+
+        options = ttk.LabelFrame(parent, text="Options", padding=14)
+        options.pack(fill="x", pady=(12, 0))
+
         self.dry_run = tk.BooleanVar(value=self._dry_run)
-        ttk.Checkbutton(arow, text="Dry run (log only, don't terminate)",
-                        variable=self.dry_run, command=self.persist).pack(side="left")
-        self.watch_btn = ttk.Button(arow, text="Start app watchdog",
-                                    command=self.toggle_watchdog)
-        self.watch_btn.pack(side="left", padx=10)
+        ttk.Checkbutton(
+            options, variable=self.dry_run, command=self.on_test_mode_changed,
+            text="Practice mode — show what would be blocked, but don't close anything"
+        ).pack(anchor="w")
 
-        trow = ttk.Frame(parent)
-        trow.pack(fill="x", pady=(12, 3))
-        ttk.Button(trow, text="Start at logon (background)",
-                   command=self.add_task).pack(side="left")
-        ttk.Button(trow, text="Stop starting at logon",
-                   command=self.del_task).pack(side="left", padx=6)
-        ttk.Label(trow, foreground="grey",
-                  text="No window; blocks apply from logon.").pack(side="left", padx=10)
+        self.autostart = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            options, variable=self.autostart, command=self.toggle_autostart,
+            text="Turn on automatically whenever this PC starts"
+        ).pack(anchor="w", pady=(6, 0))
 
-        prow = ttk.Frame(parent)
-        prow.pack(fill="x", pady=(12, 3))
-        ttk.Button(prow, text="Change PIN", command=self.change_pin).pack(side="left")
-        ttk.Label(prow, foreground="grey",
-                  text="Required to open Block Guard.").pack(side="left", padx=10)
+        extras = ttk.Frame(parent)
+        extras.pack(fill="x", pady=(14, 0))
+        ttk.Button(extras, text="Change PIN",
+                   command=self.change_pin).pack(side="left")
+        ttk.Label(extras, foreground="grey",
+                  text="Needed to open Block Guard.").pack(side="left", padx=10)
+
+        tk.Label(parent, anchor="w", justify="left", wraplength=620,
+                 foreground="#6b7280", text=ENFORCEMENT_HELP
+                 ).pack(fill="x", pady=(14, 0))
 
     def _build_log(self, parent) -> None:
         self.logbox = tk.Text(parent, height=16, wrap="word", state="disabled")
@@ -250,7 +267,7 @@ class App(ttk.Frame):
                                  on_blocked=self.note_blocked)
         self.watchdog.start()
         self.start_browser_watch()
-        self.watch_btn.configure(text="Stop app watchdog")
+        self.refresh_state()
 
     def start_browser_watch(self) -> None:
         """Notice blocked sites the browser is refusing to load."""
@@ -367,9 +384,41 @@ class App(ttk.Frame):
         self.after(POLL_MS, self._drain_messages)
 
     def refresh_state(self) -> None:
-        if winreg:
-            self.site_state.configure(
-                text="active" if site_policy_active() else "not applied")
+        """Keep the Protection card honest about what is actually happening."""
+        if not hasattr(self, "status_big"):
+            return
+        on = self.protection_on()
+        practising = bool(self._dry_run)
+
+        if on and practising:
+            headline, colour = "Practice mode", "#b45309"
+        elif on:
+            headline, colour = "Protection is ON", "#1a7f37"
+        else:
+            headline, colour = "Protection is OFF", "#b42318"
+        self.status_big.configure(text=headline, fg=colour)
+        self.protect_btn.configure(
+            text="Turn protection off" if on else "Turn protection on")
+
+        sites_on = bool(winreg) and site_policy_active()
+        self.status_detail.configure(text=(
+            f"Websites:  {len(self._blocked_sites)} on the list"
+            f"  —  {'being blocked' if sites_on else 'not blocked yet'}\n"
+            f"Apps:  {len(self._blocked_apps)} on the list"
+            f"  —  {'being watched' if on else 'not watched yet'}"))
+
+        if not on:
+            hint = ("Nothing is being blocked right now. "
+                    "Press “Turn protection on” when your lists are ready.")
+        elif practising:
+            hint = ("Nothing is really being closed. Open one of the blocked "
+                    "apps and watch the Activity tab to check your list, then "
+                    "untick practice mode when you are happy.")
+        else:
+            hint = ("Blocked apps will close on their own, and blocked "
+                    "websites will not load. Remember to close and reopen "
+                    "the browser once.")
+        self.status_hint.configure(text=hint)
 
     def need_admin(self) -> bool:
         if self.admin:
@@ -401,61 +450,80 @@ class App(ttk.Frame):
         else:
             self.say("Those apps are already blocked.")
 
-    def apply_sites(self) -> None:
-        if self.need_admin():
-            return
-        domains = self.sites.items()
-        if not domains:
-            messagebox.showinfo(APP_NAME, "The blocked website list is empty — "
-                                          "there is nothing to block.")
-            return
-        touched = apply_site_policy(domains)
-        self.say(f"Blocked {len(domains)} domains in {', '.join(touched) or 'nothing'}.")
-        self.refresh_state()
+    # -- protection, as one switch -----------------------------------------
+    def protection_on(self) -> bool:
+        return self.watchdog is not None
 
-    def clear_sites(self) -> None:
-        if self.need_admin():
-            return
-        clear_site_policy()
-        self.say("Website blocks removed.")
-        self.refresh_state()
+    def toggle_protection(self) -> None:
+        if self.protection_on():
+            self.turn_protection_off()
+        else:
+            self.turn_protection_on()
 
-    def toggle_watchdog(self) -> None:
-        if self.watchdog:
-            self.watchdog.stop()
-            self.watchdog = None
-            self.stop_browser_watch()
-            self.watch_btn.configure(text="Start app watchdog")
-            return
+    def turn_protection_on(self) -> None:
         if self.need_admin():
             return
         self.persist()
-        if not self._blocked_apps:
-            messagebox.showinfo(APP_NAME, "The blocked app list is empty — "
-                                          "the watchdog would have nothing to do.")
+        if not self._blocked_apps and not self._blocked_sites:
+            messagebox.showinfo(
+                APP_NAME,
+                "Nothing is on your lists yet.\n\n"
+                "Go to the Installed apps tab to pick apps to block, or add "
+                "websites on the Blocklists tab.")
             return
-        if not self._dry_run and not messagebox.askyesno(
-                APP_NAME, "Live mode will close these programs whenever they "
-                          f"run:\n\n{', '.join(self._blocked_apps)}\n\nContinue?"):
+        # Practice mode changes nothing on the PC, so it needs no warning.
+        if not self._dry_run and not messagebox.askyesno(APP_NAME, TURN_ON_WARNING.format(
+                apps=self._bullets(self._blocked_apps),
+                sites=self._bullets(self._blocked_sites))):
             return
-        self.watchdog = Watchdog(lambda: self._blocked_apps,
-                                 lambda: self._dry_run, self.say,
-                                 on_blocked=self.note_blocked)
-        self.watchdog.start()
-        self.start_browser_watch()
-        self.watch_btn.configure(text="Stop app watchdog")
+        if self._blocked_sites:
+            touched = apply_site_policy(self._blocked_sites)
+            self.say(f"Blocking {len(self._blocked_sites)} websites "
+                     f"in {', '.join(touched) or 'no browser'}.")
+        self.start_enforcement()
+        self.say("Protection is on.")
+        self.refresh_state()
 
-    def add_task(self) -> None:
+    def turn_protection_off(self) -> None:
         if self.need_admin():
             return
-        self.say("Logon task created." if install_logon_task()
-                 else "Could not create logon task.")
+        if self.watchdog:
+            self.watchdog.stop()
+            self.watchdog = None
+        self.stop_browser_watch()
+        clear_site_policy()
+        self.say("Protection is off.")
+        self.refresh_state()
 
-    def del_task(self) -> None:
+    @staticmethod
+    def _bullets(items) -> str:
+        if not items:
+            return "   (none)"
+        shown = ["   • " + item for item in items[:8]]
+        if len(items) > 8:
+            shown.append(f"   • …and {len(items) - 8} more")
+        return "\n".join(shown)
+
+    def on_test_mode_changed(self) -> None:
+        self.persist()
+        self.say("Practice mode on — nothing will be closed."
+                 if self._dry_run else "Practice mode off — blocking for real.")
+        self.refresh_state()
+
+    def toggle_autostart(self) -> None:
         if self.need_admin():
+            self.autostart.set(logon_task_exists())
             return
-        self.say("Logon task removed." if remove_logon_task()
-                 else "Could not remove logon task.")
+        if self.autostart.get():
+            ok = install_logon_task()
+            self.say("Will start automatically with this PC."
+                     if ok else "Could not set up automatic start.")
+        else:
+            ok = remove_logon_task()
+            self.say("Will no longer start automatically."
+                     if ok else "Could not remove automatic start.")
+        self.autostart.set(logon_task_exists())
+
 
 
 def main() -> None:

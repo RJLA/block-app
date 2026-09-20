@@ -18,6 +18,19 @@ def silence_sound(monkeypatch):
     monkeypatch.setattr("blockguard.sound.enabled", False)
 
 
+@pytest.fixture(autouse=True)
+def no_modal_dialogs(monkeypatch):
+    """A modal dialog in a test hangs the whole run with nothing on screen.
+
+    Individual tests override these when the answer is what they assert on.
+    """
+    for name, answer in (("askyesno", False), ("askokcancel", False),
+                         ("showinfo", None), ("showerror", None),
+                         ("showwarning", None)):
+        monkeypatch.setattr(f"tkinter.messagebox.{name}",
+                            lambda *a, _answer=answer, **k: _answer)
+
+
 @pytest.fixture(scope="session")
 def tk_root():
     try:

@@ -64,6 +64,16 @@ def install_logon_task(mode: str = "--background") -> bool:
                           creationflags=NO_WINDOW).returncode == 0
 
 
+def logon_task_exists() -> bool:
+    """Whether Block Guard is already registered to start at logon."""
+    cmd = ["schtasks", "/Query", "/TN", TASK_NAME]
+    try:
+        return subprocess.run(cmd, capture_output=True,
+                              creationflags=NO_WINDOW).returncode == 0
+    except OSError:
+        return False
+
+
 def remove_logon_task() -> bool:
     cmd = ["schtasks", "/Delete", "/F", "/TN", TASK_NAME]
     return subprocess.run(cmd, capture_output=True,
