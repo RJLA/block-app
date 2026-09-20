@@ -19,7 +19,10 @@ dist/
 *.manifest
 
 # --- Inno Setup (installer.iss) -------------------------------------------
-Output/
+# The finished installer IS tracked, so it can be downloaded straight onto a
+# target PC. Everything else Inno writes is build scratch.
+Output/*
+!Output/BlockGuardSetup.exe
 *.iss.bak
 
 # --- Local runtime artifacts ----------------------------------------------
