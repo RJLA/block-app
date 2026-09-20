@@ -253,6 +253,58 @@ class TestBlockedNotice:
         assert shown == ["Steam"]
 
 
+class TestLiveListChanges:
+    """Reported: sites added after switching on were never actually blocked."""
+
+    @pytest.fixture(autouse=True)
+    def _capture_policy(self, monkeypatch):
+        self.applied, self.cleared = [], []
+        monkeypatch.setattr(ui_app, "apply_site_policy",
+                            lambda d: self.applied.append(list(d)) or ["Chrome"])
+        monkeypatch.setattr(ui_app, "clear_site_policy",
+                            lambda: self.cleared.append(True))
+        monkeypatch.setattr(ui_app, "site_policy_active", lambda: True)
+        monkeypatch.setattr(ui_app, "logon_task_exists", lambda: True)
+        monkeypatch.setattr(ui_app, "install_logon_task", lambda: True)
+
+    def test_adding_a_site_while_on_reapplies_the_policy(self, app):
+        app.turn_protection_on()
+        self.applied.clear()
+        app.sites.add_value("reddit.com")
+        assert self.applied == [["facebook.com", "reddit.com"]]
+
+    def test_removing_a_site_while_on_reapplies_the_policy(self, app):
+        app.turn_protection_on()
+        self.applied.clear()
+        app.sites.set_items([])
+        app.persist()
+        assert self.cleared == [True]
+
+    def test_adding_a_site_while_off_touches_nothing(self, app):
+        """Protection is off, so the registry must be left alone."""
+        app.sites.add_value("reddit.com")
+        assert self.applied == []
+
+    def test_changing_apps_does_not_rewrite_website_policy(self, app):
+        app.turn_protection_on()
+        self.applied.clear()
+        app.apps.add_value("discord")
+        assert self.applied == []
+
+    def test_toggling_practice_mode_does_not_rewrite_policy(self, app):
+        app.turn_protection_on()
+        self.applied.clear()
+        app.dry_run.set(True)
+        app.on_test_mode_changed()
+        assert self.applied == []
+
+    def test_the_user_is_told_to_restart_the_browser(self, app):
+        app.turn_protection_on()
+        app.sites.add_value("reddit.com")
+        app._drain_messages()
+        assert "reopen the browser" in app.logbox.get("1.0", "end")
+
+
 class TestProtectionPersists:
     """The reported bug: closing the app silently switched blocking off."""
 

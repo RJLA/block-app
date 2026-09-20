@@ -333,6 +333,7 @@ class App(ttk.Frame):
     # -- state --------------------------------------------------------------
     def persist(self) -> None:
         """Save, and refresh the snapshots the watchdog thread reads."""
+        previous_sites = list(getattr(self, "_blocked_sites", []))
         self._blocked_apps = self.apps.items()
         self._blocked_sites = self.sites.items()
         self._dry_run = self.dry_run.get() if hasattr(self, "dry_run") else True
@@ -343,6 +344,24 @@ class App(ttk.Frame):
                        "protection": self._protection})
         except OSError as exc:
             messagebox.showerror(APP_NAME, f"Could not save:\n{exc}")
+
+        # Apps are re-read by the watchdog every few seconds, but websites are
+        # a one-off registry write -- without this, a site added after
+        # switching on is saved to the list and never actually blocked.
+        if self.protection_on() and self._blocked_sites != previous_sites:
+            self.reapply_site_policy()
+
+    def reapply_site_policy(self) -> None:
+        """Push the current website list to the browsers."""
+        if self._blocked_sites:
+            apply_site_policy(self._blocked_sites)
+            self.say(f"Website list updated — now blocking "
+                     f"{len(self._blocked_sites)}. Close and reopen the "
+                     f"browser for this to take effect.")
+        else:
+            clear_site_policy()
+            self.say("No websites left on the list — website blocking removed.")
+        self.refresh_state()
 
     def say(self, line: str) -> None:
         """Safe to call from any thread; the UI drains the queue."""

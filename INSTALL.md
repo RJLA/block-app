@@ -194,7 +194,10 @@ same.
 Use the **Check** box to test any entry. A blocked lookup shows the crying frog
 and **BLOCKED**; anything else reports **not blocked**.
 
-Changes save immediately — there is no Save button.
+Changes save immediately — there is no Save button. If protection is already
+on, adding or removing a **website** is pushed to the browser straight away,
+but you must **close and reopen the browser** before it takes effect. Apps need
+no such step: they apply within about 5 seconds.
 
 > **Critical Windows processes are refused even if you list them.** Adding
 > `explorer` to the list will not terminate your desktop; the Check box will
@@ -337,6 +340,7 @@ watchdog**, **Stop running at logon**.
 |---|---|
 | `NOT elevated — enforcement disabled` | Not running as admin. Relaunch via **Run as administrator**, or accept the app's offer to restart elevated. |
 | Blocked sites still load | The browser wasn't restarted. Check `chrome://policy` → *Reload policies*. |
+| A site added later still loads | Websites need the browser closed and reopened before a change applies. The Activity tab confirms the list was pushed to the browser. |
 | Firefox ignores the block | Expected — only Chrome and Edge policy is written. Block `firefox` as an app instead. |
 | A blocked app keeps running | Check the Enforcement tab reads *Protection is ON*, not *Practice mode*, and that the name matches. The Check box on the Blocklists tab tells you what the app will actually match on. |
 | Listing `explorer` does nothing | By design — critical Windows processes are protected and can never be terminated. |

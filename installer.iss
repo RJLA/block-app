@@ -3,7 +3,7 @@
 ; Requires dist\BlockGuard.exe (run build.bat first).
 
 #define MyAppName "Block Guard"
-#define MyAppVersion "2.1.0"
+#define MyAppVersion "2.1.1"
 #define MyAppExe "BlockGuard.exe"
 
 [Setup]
