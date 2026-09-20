@@ -87,6 +87,7 @@ class App(ttk.Frame):
         self._blocked_apps = list(data["apps"])
         self._blocked_sites = list(data["websites"])
         self._dry_run = bool(data["dry_run"])
+        self._protection = bool(data["protection"])
 
         Header(self).pack(fill="x", pady=(0, 6))
 
@@ -126,10 +127,11 @@ class App(ttk.Frame):
         self.refresh_state()
         self.after(POLL_MS, self._drain_messages)
 
-        # Enforcement starts before the PIN is entered, so a student cannot
-        # dodge the blocks simply by dismissing the lock screen at logon.
-        if "--enforce" in sys.argv and self.admin:
-            self.start_enforcement()
+        # Protection resumes by itself if it was left on, before the PIN is
+        # entered, so a student cannot dodge the blocks by dismissing the lock
+        # screen or by closing the window.
+        if self._protection and self.admin:
+            self.resume_protection()
 
         self.lock = None
         self.show_lock()
@@ -283,13 +285,19 @@ class App(ttk.Frame):
             self.browser_watch = None
 
     # -- background mode ----------------------------------------------------
+    def go_background(self) -> None:
+        """Hide, keep running, and listen for a request to come back."""
+        if not self.background:
+            self.background = True
+            self._poll_show_requests()
+        self.hide()
+
     def enter_background(self) -> None:
-        """No window, enforcement running, watching to be summoned."""
-        self.background = True
-        self.winfo_toplevel().withdraw()
-        self.start_enforcement()
+        """Launched with --background: no window, protection resumed."""
+        if self._protection and self.admin:
+            self.resume_protection()
+        self.go_background()
         self.say("Running in the background.")
-        self._poll_show_requests()
 
     def _poll_show_requests(self) -> None:
         if consume_show_request():
@@ -310,12 +318,14 @@ class App(ttk.Frame):
         self.winfo_toplevel().withdraw()
 
     def on_close(self) -> None:
-        """Closing hides in background mode; otherwise it really exits."""
-        if self.background:
-            self.hide()
+        """Closing must never silently switch protection off.
+
+        While protection is on the window hides and keeps working; only with
+        protection off does closing actually quit.
+        """
+        if self.background or self.protection_on():
+            self.go_background()
             return
-        if self.watchdog:
-            self.watchdog.stop()
         self.stop_browser_watch()
         shutdown_sound()
         self.winfo_toplevel().destroy()
@@ -327,9 +337,10 @@ class App(ttk.Frame):
         self._blocked_sites = self.sites.items()
         self._dry_run = self.dry_run.get() if hasattr(self, "dry_run") else True
         try:
-            save_data({"websites": self.sites.items(),
+            save_data({"websites": self._blocked_sites,
                        "apps": self._blocked_apps,
-                       "dry_run": self._dry_run})
+                       "dry_run": self._dry_run,
+                       "protection": self._protection})
         except OSError as exc:
             messagebox.showerror(APP_NAME, f"Could not save:\n{exc}")
 
@@ -407,7 +418,12 @@ class App(ttk.Frame):
             f"Apps:  {len(self._blocked_apps)} on the list"
             f"  —  {'being watched' if on else 'not watched yet'}"))
 
-        if not on:
+        if self._protection and not on:
+            # Wanted on, but cannot run -- say so rather than looking broken.
+            hint = ("Protection is set to on, but Block Guard is not running "
+                    "as administrator, so nothing is being blocked. Reopen it "
+                    "with “Run as administrator”.")
+        elif not on:
             hint = ("Nothing is being blocked right now. "
                     "Press “Turn protection on” when your lists are ready.")
         elif practising:
@@ -416,8 +432,8 @@ class App(ttk.Frame):
                     "untick practice mode when you are happy.")
         else:
             hint = ("Blocked apps will close on their own, and blocked "
-                    "websites will not load. Remember to close and reopen "
-                    "the browser once.")
+                    "websites will not load. Closing this window keeps "
+                    "protection running in the background.")
         self.status_hint.configure(text=hint)
 
     def need_admin(self) -> bool:
@@ -476,17 +492,33 @@ class App(ttk.Frame):
                 apps=self._bullets(self._blocked_apps),
                 sites=self._bullets(self._blocked_sites))):
             return
+
+        self._protection = True
+        self.persist()
+        self.resume_protection()
+        self.say("Protection is on, and will stay on.")
+
+        # "On" has to mean on after a reboot too, or it quietly lapses the
+        # first time the PC restarts.
+        if not logon_task_exists() and install_logon_task():
+            self.say("Block Guard will now start automatically with this PC.")
+        self.autostart.set(logon_task_exists())
+        self.refresh_state()
+
+    def resume_protection(self) -> None:
+        """Apply everything without prompting -- consent was given already."""
         if self._blocked_sites:
             touched = apply_site_policy(self._blocked_sites)
             self.say(f"Blocking {len(self._blocked_sites)} websites "
                      f"in {', '.join(touched) or 'no browser'}.")
         self.start_enforcement()
-        self.say("Protection is on.")
         self.refresh_state()
 
     def turn_protection_off(self) -> None:
         if self.need_admin():
             return
+        self._protection = False
+        self.persist()
         if self.watchdog:
             self.watchdog.stop()
             self.watchdog = None

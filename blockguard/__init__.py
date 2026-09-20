@@ -18,7 +18,7 @@ TASK_NAME = "BlockGuard"
 FOLDER_NAME = "BlockGuard"
 CONFIG_NAME = "blocklist.json"
 LOG_NAME = "guard.log"
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 
 # How often the watchdog rescans running processes.
 POLL_SECONDS = 5

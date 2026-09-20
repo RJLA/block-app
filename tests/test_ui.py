@@ -21,7 +21,8 @@ def locked_app(monkeypatch, window):
     """A real App sitting on its lock screen, with disk and PC access stubbed."""
     monkeypatch.setattr(ui_app, "save_data", lambda _data: None)
     monkeypatch.setattr(ui_app, "load_data", lambda: {
-        "websites": ["facebook.com"], "apps": ["steam"], "dry_run": True})
+        "websites": ["facebook.com"], "apps": ["steam"],
+        "dry_run": True, "protection": False})
     monkeypatch.setattr(ui_lists, "inventory", lambda: list(FAKE_INVENTORY))
     monkeypatch.setattr(ui_app, "restrict_data_dir", lambda: True)
     # A PIN already exists, so the lock screen opens in unlock mode.
@@ -252,8 +253,89 @@ class TestBlockedNotice:
         assert shown == ["Steam"]
 
 
+class TestProtectionPersists:
+    """The reported bug: closing the app silently switched blocking off."""
+
+    @pytest.fixture(autouse=True)
+    def _no_real_policy(self, monkeypatch):
+        self.saved = []
+        monkeypatch.setattr(ui_app, "apply_site_policy", lambda d: ["Chrome"])
+        monkeypatch.setattr(ui_app, "clear_site_policy", lambda: None)
+        monkeypatch.setattr(ui_app, "site_policy_active", lambda: True)
+        monkeypatch.setattr(ui_app, "logon_task_exists", lambda: True)
+        monkeypatch.setattr(ui_app, "install_logon_task", lambda: True)
+
+    def record_saves(self, app, monkeypatch):
+        """Patch after the app fixture, which stubs save_data to a no-op."""
+        monkeypatch.setattr(ui_app, "save_data", self.saved.append)
+
+    def test_turning_on_is_written_to_disk(self, app, monkeypatch):
+        self.record_saves(app, monkeypatch)
+        app.turn_protection_on()
+        assert self.saved[-1]["protection"] is True
+
+    def test_turning_off_is_written_to_disk(self, app, monkeypatch):
+        self.record_saves(app, monkeypatch)
+        app.turn_protection_on()
+        app.turn_protection_off()
+        assert self.saved[-1]["protection"] is False
+
+    def test_closing_keeps_protection_running(self, app):
+        app.turn_protection_on()
+        dog = app.watchdog
+        app.on_close()
+        assert app.protection_on() is True
+        assert not dog._stop.is_set()
+        assert app.winfo_toplevel().state() == "withdrawn"
+
+    def test_closing_with_protection_off_really_exits(self, locked_app, monkeypatch):
+        destroyed = []
+        monkeypatch.setattr(locked_app.winfo_toplevel(), "destroy",
+                            lambda: destroyed.append(True))
+        locked_app.on_close()
+        assert destroyed == [True]
+
+    def test_relaunch_resumes_protection(self, monkeypatch, window):
+        """A fresh App with protection saved on must start blocking itself."""
+        monkeypatch.setattr(ui_app, "load_data", lambda: {
+            "websites": ["facebook.com"], "apps": ["steam"],
+            "dry_run": False, "protection": True})
+        monkeypatch.setattr(ui_app, "has_pin", lambda: True)
+        monkeypatch.setattr(ui_pin, "has_pin", lambda: True)
+        monkeypatch.setattr(ui_pin, "lockout_remaining", lambda: 0)
+        monkeypatch.setattr(ui_lists, "inventory", list)
+        monkeypatch.setattr(ui_app, "is_admin", lambda: True)
+
+        fresh = ui_app.App(window)
+        try:
+            assert fresh.protection_on() is True
+            assert "ON" in fresh.status_big.cget("text")
+        finally:
+            if fresh.watchdog:
+                fresh.watchdog.stop()
+
+    def test_relaunch_stays_off_when_it_was_off(self, app):
+        assert app.protection_on() is False
+
+    def test_turning_on_also_enables_autostart(self, app, monkeypatch):
+        """Otherwise protection quietly lapses at the next reboot."""
+        installed = []
+        monkeypatch.setattr(ui_app, "logon_task_exists",
+                            lambda: bool(installed))
+        monkeypatch.setattr(ui_app, "install_logon_task",
+                            lambda: installed.append(True) or True)
+        app.turn_protection_on()
+        assert installed == [True]
+
+    def test_wanted_on_but_not_admin_is_explained(self, app):
+        app._protection = True
+        app.refresh_state()
+        assert "administrator" in app.status_hint.cget("text")
+
+
 class TestBackgroundMode:
     def test_enter_background_hides_and_enforces(self, locked_app):
+        locked_app._protection = True
         locked_app.enter_background()
         assert locked_app.background is True
         assert locked_app.winfo_toplevel().state() == "withdrawn"
@@ -262,10 +344,12 @@ class TestBackgroundMode:
     def test_enforces_even_with_an_empty_blocklist(self, locked_app):
         """Entries added later must still be picked up by the running scan."""
         locked_app._blocked_apps = []
+        locked_app._protection = True
         locked_app.enter_background()
         assert locked_app.watchdog is not None
 
     def test_being_summoned_shows_a_locked_window(self, locked_app, monkeypatch):
+        locked_app._protection = True
         locked_app.enter_background()
         locked_app.on_unlocked()                    # pretend someone unlocked
         monkeypatch.setattr(ui_app, "consume_show_request", lambda: True)
@@ -275,17 +359,20 @@ class TestBackgroundMode:
         assert locked_app.lock is not None          # re-locked on reveal
 
     def test_closing_hides_instead_of_exiting(self, locked_app):
+        locked_app._protection = True
         locked_app.enter_background()
         locked_app.reveal()
         locked_app.on_close()
         assert locked_app.winfo_toplevel().state() == "withdrawn"
         assert locked_app.watchdog is not None      # still enforcing
 
-    def test_closing_a_normal_session_stops_the_watchdog(self, app):
+    def test_closing_never_stops_a_running_watchdog(self, app):
+        """Closing the window must not be a way to switch blocking off."""
         app.start_enforcement()
         dog = app.watchdog
         app.on_close()
-        assert dog._stop.is_set()
+        assert not dog._stop.is_set()
+        assert app.winfo_toplevel().state() == "withdrawn"
 
 
 class TestProtectionSwitch:

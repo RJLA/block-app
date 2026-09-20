@@ -6,7 +6,7 @@ import os
 from .naming import normalize_app, normalize_site
 from .paths import CONFIG_PATH, seed_path
 
-DEFAULTS = {"websites": [], "apps": [], "dry_run": True}
+DEFAULTS = {"websites": [], "apps": [], "dry_run": True, "protection": False}
 
 
 def _clean(raw: dict) -> dict:
@@ -16,6 +16,9 @@ def _clean(raw: dict) -> dict:
         "apps": sorted({normalize_app(x) for x in raw.get("apps", []) if x}),
         # Dry run defaults to ON -- never start terminating without being told.
         "dry_run": bool(raw.get("dry_run", True)),
+        # Whether protection was left switched on, so it resumes by itself
+        # rather than quietly lapsing when the app is closed or the PC reboots.
+        "protection": bool(raw.get("protection", False)),
     }
 
 

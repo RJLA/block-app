@@ -227,6 +227,14 @@ starts**. From then on it runs hidden from every logon.
 To stop everything, press **Turn protection off**: apps stop being watched and
 website blocking is removed in one go.
 
+**Protection stays on until you switch it off.** Closing the window does not
+stop it — Block Guard hides and keeps working, and reopening it shows the lock
+screen again. It also resumes by itself after a reboot, and turning protection
+on registers the logon task automatically so that cannot be forgotten.
+
+The only ways to stop blocking are pressing **Turn protection off**, or
+uninstalling.
+
 ---
 
 ## Background mode

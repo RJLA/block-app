@@ -44,7 +44,7 @@ def test_save_then_load_round_trips(tmp_path, monkeypatch):
 
     written = json.loads(path.read_text(encoding="utf-8"))
     assert written == {"websites": ["facebook.com"], "apps": ["steam"],
-                       "dry_run": False}
+                       "dry_run": False, "protection": False}
 
 
 def test_load_falls_back_when_config_is_corrupt(tmp_path, monkeypatch):
