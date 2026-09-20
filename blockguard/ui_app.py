@@ -8,6 +8,7 @@ from datetime import datetime
 from tkinter import messagebox, ttk
 
 from . import APP_NAME, VERSION
+from .browser_watch import BrowserWatch
 from .config import load_data, save_data
 from .mascot import load_mascot, set_window_icon
 from .naming import app_blocked, normalize_app, normalize_site, site_blocked
@@ -69,6 +70,7 @@ class App(ttk.Frame):
         super().__init__(master, padding=8)
         self.pack(fill="both", expand=True)
         self.watchdog = None
+        self.browser_watch = None
         self.background = False
         self._messages = queue.Queue()
         self._blocked_events = queue.Queue()
@@ -78,6 +80,7 @@ class App(ttk.Frame):
         # Plain-Python mirrors of the UI state. The watchdog thread reads these
         # instead of Tk widgets, which are not safe to touch off the UI thread.
         self._blocked_apps = list(data["apps"])
+        self._blocked_sites = list(data["websites"])
         self._dry_run = bool(data["dry_run"])
 
         Header(self).pack(fill="x", pady=(0, 6))
@@ -246,7 +249,21 @@ class App(ttk.Frame):
                                  lambda: self._dry_run, self.say,
                                  on_blocked=self.note_blocked)
         self.watchdog.start()
+        self.start_browser_watch()
         self.watch_btn.configure(text="Stop app watchdog")
+
+    def start_browser_watch(self) -> None:
+        """Notice blocked sites the browser is refusing to load."""
+        if self.browser_watch:
+            return
+        self.browser_watch = BrowserWatch(lambda: self._blocked_sites,
+                                          self.note_site_blocked)
+        self.browser_watch.start()
+
+    def stop_browser_watch(self) -> None:
+        if self.browser_watch:
+            self.browser_watch.stop()
+            self.browser_watch = None
 
     # -- background mode ----------------------------------------------------
     def enter_background(self) -> None:
@@ -282,6 +299,7 @@ class App(ttk.Frame):
             return
         if self.watchdog:
             self.watchdog.stop()
+        self.stop_browser_watch()
         shutdown_sound()
         self.winfo_toplevel().destroy()
 
@@ -289,6 +307,7 @@ class App(ttk.Frame):
     def persist(self) -> None:
         """Save, and refresh the snapshots the watchdog thread reads."""
         self._blocked_apps = self.apps.items()
+        self._blocked_sites = self.sites.items()
         self._dry_run = self.dry_run.get() if hasattr(self, "dry_run") else True
         try:
             save_data({"websites": self.sites.items(),
@@ -302,8 +321,15 @@ class App(ttk.Frame):
         self._messages.put(line)
 
     def note_blocked(self, name: str) -> None:
-        """Called from the watchdog thread; the UI thread does the popup."""
+        """Called from a worker thread; the UI thread does the popup."""
         self._blocked_events.put(name)
+
+    def note_site_blocked(self, host: str) -> None:
+        """A blocked site is on screen. Logged as well, so the match is
+        visible in the Activity tab when tuning what the browser titles are."""
+        if time.time() - self._last_toast.get(host, 0) >= TOAST_COOLDOWN_SECONDS:
+            self.say(f"blocked site on screen: {host}")
+        self._blocked_events.put(host)
 
     def display_name(self, exe: str) -> str:
         """Prefer the friendly product name the inventory found."""
@@ -398,6 +424,7 @@ class App(ttk.Frame):
         if self.watchdog:
             self.watchdog.stop()
             self.watchdog = None
+            self.stop_browser_watch()
             self.watch_btn.configure(text="Start app watchdog")
             return
         if self.need_admin():
@@ -415,6 +442,7 @@ class App(ttk.Frame):
                                  lambda: self._dry_run, self.say,
                                  on_blocked=self.note_blocked)
         self.watchdog.start()
+        self.start_browser_watch()
         self.watch_btn.configure(text="Stop app watchdog")
 
     def add_task(self) -> None:

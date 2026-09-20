@@ -294,8 +294,22 @@ and no prompt, only that blocked things do not work.
 **A blocked website.** Chrome and Edge show their own built-in block page
 (`ERR_BLOCKED_BY_ADMINISTRATOR`), saying the page was blocked by the
 administrator. That wording comes from the browser, not from Block Guard.
-Other browsers are not policy-managed and show nothing unusual — block them as
-apps instead.
+
+The frog notice and the trumpet also appear, a second or two later. Block Guard
+cannot see browser navigation, so it works this out from the browser's window
+title: a blocked tab is titled with the host it refused to load. Matching is
+strict on purpose — searching Google for "reddit.com" is titled
+`reddit.com - Google Search` and deliberately does **not** trigger a notice.
+
+Because it is a title heuristic rather than a hook into the browser, it is
+worth confirming once on a new machine: block a site, open it, and check the
+**Activity** tab for `blocked site on screen: <host>`. If the notice does not
+appear, the browser is titling the blocked page differently — the list of
+recognised browser suffixes is `BROWSER_SUFFIXES` in
+`blockguard/browser_watch.py`.
+
+Other browsers are not policy-managed, so the site loads normally and no notice
+appears — block them as apps instead.
 
 ---
 
