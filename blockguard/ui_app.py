@@ -15,6 +15,7 @@ from .paths import CONFIG_PATH, LOG_PATH, log
 from .pin import has_pin
 from .processes import Watchdog
 from .sites import apply_site_policy, clear_site_policy, site_policy_active
+from .single_instance import acquire, consume_show_request, request_show
 from .system import (
     install_logon_task, is_admin, relaunch_as_admin, remove_logon_task,
     restrict_data_dir,
@@ -32,6 +33,8 @@ POLL_MS = 150
 # One toast per app at most this often. A browser or game can spawn a dozen
 # processes that all die in the same sweep; the student needs one notice.
 TOAST_COOLDOWN_SECONDS = 30
+# How often a background session checks whether it has been summoned.
+SHOW_POLL_MS = 600
 
 ENFORCEMENT_HELP = (
     "Websites: applies Chrome and Edge enterprise policy so the listed domains "
@@ -65,6 +68,7 @@ class App(ttk.Frame):
         super().__init__(master, padding=8)
         self.pack(fill="both", expand=True)
         self.watchdog = None
+        self.background = False
         self._messages = queue.Queue()
         self._blocked_events = queue.Queue()
         self._last_toast = {}
@@ -179,9 +183,12 @@ class App(ttk.Frame):
 
         trow = ttk.Frame(parent)
         trow.pack(fill="x", pady=(12, 3))
-        ttk.Button(trow, text="Run at logon", command=self.add_task).pack(side="left")
-        ttk.Button(trow, text="Stop running at logon",
+        ttk.Button(trow, text="Start at logon (background)",
+                   command=self.add_task).pack(side="left")
+        ttk.Button(trow, text="Stop starting at logon",
                    command=self.del_task).pack(side="left", padx=6)
+        ttk.Label(trow, foreground="grey",
+                  text="No window; blocks apply from logon.").pack(side="left", padx=10)
 
         prow = ttk.Frame(parent)
         prow.pack(fill="x", pady=(12, 3))
@@ -226,14 +233,55 @@ class App(ttk.Frame):
         ChangePinDialog(self, on_done=lambda: self.say("PIN changed."))
 
     def start_enforcement(self) -> None:
-        """Start the watchdog without touching widgets or asking for a PIN."""
-        if self.watchdog or not self._blocked_apps:
+        """Start the watchdog without touching widgets or asking for a PIN.
+
+        No empty-list guard here: the watchdog skips its scan while the list
+        is empty and picks up additions live, so a background session started
+        with nothing blocked still works once entries are added.
+        """
+        if self.watchdog:
             return
         self.watchdog = Watchdog(lambda: self._blocked_apps,
                                  lambda: self._dry_run, self.say,
                                  on_blocked=self.note_blocked)
         self.watchdog.start()
         self.watch_btn.configure(text="Stop app watchdog")
+
+    # -- background mode ----------------------------------------------------
+    def enter_background(self) -> None:
+        """No window, enforcement running, watching to be summoned."""
+        self.background = True
+        self.winfo_toplevel().withdraw()
+        self.start_enforcement()
+        self.say("Running in the background.")
+        self._poll_show_requests()
+
+    def _poll_show_requests(self) -> None:
+        if consume_show_request():
+            self.reveal()
+        self.after(SHOW_POLL_MS, self._poll_show_requests)
+
+    def reveal(self) -> None:
+        """Bring the window back, always locked."""
+        self.show_lock()
+        top = self.winfo_toplevel()
+        top.deiconify()
+        top.lift()
+        top.focus_force()
+
+    def hide(self) -> None:
+        """Re-lock and disappear, leaving enforcement running."""
+        self.show_lock()
+        self.winfo_toplevel().withdraw()
+
+    def on_close(self) -> None:
+        """Closing hides in background mode; otherwise it really exits."""
+        if self.background:
+            self.hide()
+            return
+        if self.watchdog:
+            self.watchdog.stop()
+        self.winfo_toplevel().destroy()
 
     # -- state --------------------------------------------------------------
     def persist(self) -> None:
@@ -380,6 +428,15 @@ class App(ttk.Frame):
 
 
 def main() -> None:
+    background = "--background" in sys.argv
+
+    # A second launch does not start a second copy; it asks the running one
+    # to show its lock screen, which is the only way back in from background
+    # mode since there is no window and no tray icon.
+    if not acquire():
+        request_show()
+        return
+
     root = tk.Tk()
     root.title(APP_NAME)
     root.geometry("760x640")
@@ -390,6 +447,7 @@ def main() -> None:
         pass
     set_window_icon(root)
     app = App(root)
-    root.protocol("WM_DELETE_WINDOW",
-                  lambda: (app.watchdog and app.watchdog.stop(), root.destroy()))
+    if background:
+        app.enter_background()
+    root.protocol("WM_DELETE_WINDOW", app.on_close)
     root.mainloop()

@@ -173,7 +173,8 @@ class TestKill:
 
 
 class TestLogonTask:
-    def test_create_uses_highest_privileges_and_enforce_flag(self, monkeypatch):
+    def test_create_uses_highest_privileges_and_defaults_to_background(
+            self, monkeypatch):
         seen = {}
 
         def fake_run(cmd, **kwargs):
@@ -184,6 +185,18 @@ class TestLogonTask:
         assert system.install_logon_task() is True
         assert seen["cmd"][:8] == ["schtasks", "/Create", "/F", "/TN",
                                    "BlockGuard", "/SC", "ONLOGON", "/RL"]
+        # Background is the default: blocks apply at logon with no window.
+        assert "--background" in seen["cmd"][-1]
+
+    def test_create_accepts_an_explicit_mode(self, monkeypatch):
+        seen = {}
+
+        def fake_run(cmd, **kwargs):
+            seen["cmd"] = cmd
+            return FakeCompleted(returncode=0)
+
+        monkeypatch.setattr(system.subprocess, "run", fake_run)
+        assert system.install_logon_task("--enforce") is True
         assert "--enforce" in seen["cmd"][-1]
 
     def test_create_reports_failure(self, monkeypatch):

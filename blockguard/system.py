@@ -51,10 +51,15 @@ def restrict_data_dir() -> bool:
     return ok
 
 
-def install_logon_task() -> bool:
+def install_logon_task(mode: str = "--background") -> bool:
+    """Run Block Guard at every logon.
+
+    The task records an absolute path, so moving the executable afterwards
+    silently breaks it -- install somewhere permanent first.
+    """
     exe = os.path.abspath(sys.argv[0])
     cmd = ["schtasks", "/Create", "/F", "/TN", TASK_NAME, "/SC", "ONLOGON",
-           "/RL", "HIGHEST", "/TR", f'"{exe}" --enforce']
+           "/RL", "HIGHEST", "/TR", f'"{exe}" {mode}']
     return subprocess.run(cmd, capture_output=True,
                           creationflags=NO_WINDOW).returncode == 0
 

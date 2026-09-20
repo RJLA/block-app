@@ -76,8 +76,19 @@ python -m venv .venv
 iscc installer.iss
 ```
 
-Produces **`Output\BlockGuardSetup.exe`**. If `iscc` isn't on `PATH`, use the
-full path, typically `"C:\Program Files (x86)\Inno Setup 6\iscc.exe"`.
+Produces **`Output\BlockGuardSetup.exe`** (~12 MB). `iscc` is not added to
+`PATH` by the installer, so use the full path. A winget install puts it under
+your user profile rather than Program Files:
+
+```bat
+"%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" installer.iss
+```
+
+Inno Setup itself can be installed with:
+
+```bat
+winget install --id JRSoftware.InnoSetup
+```
 
 **Copy that one file to the target PC.** Nothing else needs to travel with it.
 The bare `dist\BlockGuard.exe` also works on its own if you skip the installer.
@@ -111,9 +122,9 @@ both unticked by default:
 | Checkbox | Effect |
 |---|---|
 | Create a desktop shortcut | Adds a desktop icon |
-| Start enforcement at logon | Registers a scheduled task that runs the app elevated with `--enforce` at every logon |
+| Start Block Guard at logon | Registers a scheduled task that runs the app elevated and **hidden** (`--background`) at every logon |
 
-Leave **"Start enforcement at logon" unticked for now** — turn it on from
+Leave **"Start Block Guard at logon" unticked for now** — turn it on from
 inside the app once your lists are right (see 2.6).
 
 ### 2.3 What the installer puts where
@@ -139,8 +150,9 @@ blocked. Use **Lock** (bottom right) to re-lock without closing the app, and
 required).
 
 **Enforcement does not wait for the PIN.** When the logon task starts the app
-with `--enforce`, the watchdog and website blocks come up immediately while the
-window stays locked. Dismissing the lock screen does not unblock anything.
+with `--background`, the watchdog and website blocks come up immediately with
+no window at all. There is nothing for a student to dismiss, and dismissing the
+lock screen when it is shown does not unblock anything either.
 
 The PIN itself is never stored — only a salted PBKDF2-SHA256 digest in
 `C:\ProgramData\BlockGuard\security.json`. After 3 wrong entries a lockout
@@ -217,9 +229,33 @@ to **active**.
 - **Verify** at `chrome://policy` (or `edge://policy`) → *Reload policies*.
 - **Firefox and other browsers are not covered.** Block them as apps instead.
 
-**Step 4 — Survive reboots.** Click **Run at logon** to register the scheduled
-task. Without it the watchdog stops when you close the app; the website policy
-persists either way, since it lives in the registry.
+**Step 4 — Survive reboots.** Click **Start at logon (background)** to register
+the scheduled task. Without it the watchdog stops when you close the app; the
+website policy persists either way, since it lives in the registry.
+
+---
+
+## Background mode
+
+With the logon task registered, Block Guard starts **hidden** every time the
+student signs in. There is no window, no taskbar button and no tray icon — the
+blocks are simply already in force. A blocked app closes with the frog notice,
+which is the only thing the student ever sees.
+
+**To get back in**, launch Block Guard normally — Start menu, desktop shortcut
+or the executable. That does not start a second copy: it signals the one
+already running, which brings up its lock screen. Enter the PIN and the tabs
+appear as usual.
+
+**Closing the window does not stop enforcement** while in background mode. It
+re-locks and hides again, and the watchdog keeps running. To genuinely stop it,
+untick **Start at logon**, stop the watchdog, and remove the website blocks.
+
+> **Put the executable somewhere permanent before enabling this.** The
+> scheduled task stores an absolute path, so if you run Block Guard from a USB
+> stick, Downloads or the Desktop and later move or delete it, the task
+> silently fails at every logon with no error. Installing via
+> `BlockGuardSetup.exe` handles this for you by placing it in Program Files.
 
 ---
 
@@ -247,6 +283,9 @@ being closed.
 > Termination is a forced kill of the process tree, so anything unsaved in a
 > blocked app is lost without a prompt. Keep the blocklist to things like games
 > and chat apps rather than anything document-shaped.
+
+**At logon.** Nothing. Block Guard starts hidden; the student sees no window
+and no prompt, only that blocked things do not work.
 
 **A blocked website.** Chrome and Edge show their own built-in block page
 (`ERR_BLOCKED_BY_ADMINISTRATOR`), saying the page was blocked by the
@@ -282,7 +321,9 @@ watchdog**, **Stop running at logon**.
 | A blocked app keeps running | Confirm the watchdog is started, *Dry run* is unticked, and the name matches. The Check box tells you what the app will actually match on. |
 | Listing `explorer` does nothing | By design — critical Windows processes are protected and can never be terminated. |
 | An app isn't in the "Installed apps" list | Not every installer records a usable executable. Launch the app, tick **Running now only**, and it will appear — or type its name manually. |
-| Nothing happens at logon | The task only exists if you ticked the installer option or clicked **Run at logon**. Verify with `schtasks /Query /TN BlockGuard`. |
+| Nothing happens at logon | The task only exists if you ticked the installer option or clicked **Start at logon**. Verify with `schtasks /Query /TN BlockGuard`. |
+| Blocks stopped working after moving the exe | The logon task stores an absolute path. Re-register it with **Start at logon** from the new location, or reinstall. |
+| Double-clicking Block Guard seems to do nothing | It is already running in the background; the launch signals that copy, and its lock screen should appear within a second. If it does not, check Task Manager for `BlockGuard.exe`. |
 | Want the blocks gone immediately | Delete the keys under `HKLM\SOFTWARE\Policies\Google\Chrome` and `...\Microsoft\Edge`, then `schtasks /Delete /F /TN BlockGuard`. |
 | SmartScreen blocks the installer | Unsigned binary — **More info → Run anyway**, or sign it. |
 | Forgot the PIN | As an administrator, delete `C:\ProgramData\BlockGuard\security.json`. The app will ask you to enroll a new PIN on the next launch; the blocklist is untouched. |

@@ -35,10 +35,10 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: deskto
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
-Name: "logontask"; Description: "Start enforcement at logon"; Flags: unchecked
+Name: "logontask"; Description: "Start Block Guard at logon (runs in the background, no window)"; Flags: unchecked
 
 [Run]
-Filename: "schtasks"; Parameters: "/Create /F /TN BlockGuard /SC ONLOGON /RL HIGHEST /TR """"{app}\{#MyAppExe}"""" --enforce"; \
+Filename: "schtasks"; Parameters: "/Create /F /TN BlockGuard /SC ONLOGON /RL HIGHEST /TR """"{app}\{#MyAppExe}"""" --background"; \
     Flags: runhidden; Tasks: logontask
 Filename: "{app}\{#MyAppExe}"; Description: "Launch {#MyAppName}"; Flags: postinstall nowait skipifsilent
 

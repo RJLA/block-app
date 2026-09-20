@@ -233,6 +233,42 @@ class TestBlockedNotice:
         assert shown == ["Steam"]
 
 
+class TestBackgroundMode:
+    def test_enter_background_hides_and_enforces(self, locked_app):
+        locked_app.enter_background()
+        assert locked_app.background is True
+        assert locked_app.winfo_toplevel().state() == "withdrawn"
+        assert locked_app.watchdog is not None
+
+    def test_enforces_even_with_an_empty_blocklist(self, locked_app):
+        """Entries added later must still be picked up by the running scan."""
+        locked_app._blocked_apps = []
+        locked_app.enter_background()
+        assert locked_app.watchdog is not None
+
+    def test_being_summoned_shows_a_locked_window(self, locked_app, monkeypatch):
+        locked_app.enter_background()
+        locked_app.on_unlocked()                    # pretend someone unlocked
+        monkeypatch.setattr(ui_app, "consume_show_request", lambda: True)
+        locked_app._poll_show_requests()
+        locked_app.update()
+        assert locked_app.winfo_toplevel().state() == "normal"
+        assert locked_app.lock is not None          # re-locked on reveal
+
+    def test_closing_hides_instead_of_exiting(self, locked_app):
+        locked_app.enter_background()
+        locked_app.reveal()
+        locked_app.on_close()
+        assert locked_app.winfo_toplevel().state() == "withdrawn"
+        assert locked_app.watchdog is not None      # still enforcing
+
+    def test_closing_a_normal_session_stops_the_watchdog(self, app):
+        app.start_enforcement()
+        dog = app.watchdog
+        app.on_close()
+        assert dog._stop.is_set()
+
+
 class TestActivityLog:
     def test_messages_reach_the_log_box(self, app):
         app.say("hello from a thread")
